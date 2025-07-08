@@ -1,0 +1,34 @@
+name: release
+
+on:
+  push:
+    tags:
+    - 'v*'
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - id: get-version
+        uses: battila7/get-version-action@v2
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.24.4'
+
+      - name: Build rtty release
+        run: |
+          COMPRESS=1 ./build.sh linux amd64
+          COMPRESS=1 ./build.sh linux arm64
+          COMPRESS=1 ./build.sh windows amd64
+
+      - name: Upload Release Asset
+        uses: softprops/action-gh-release@v1
+        with:
+          files: |
+            rtty-${{ steps.get-version.outputs.version-without-v }}-linux-amd64.tar.bz2
+            rtty-${{ steps.get-version.outputs.version-without-v }}-linux-arm64.tar.bz2
+            rtty-${{ steps.get-version.outputs.version-without-v }}-windows-amd64.tar.bz2
+          draft: true
