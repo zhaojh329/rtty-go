@@ -5,6 +5,7 @@ go 1.24.4
 require (
 	github.com/creack/pty v1.1.24
 	github.com/dwdcth/consoleEx v0.0.0-20180521133551-f56f6eb78b76
+	github.com/kylelemons/go-gypsy v1.0.0
 	github.com/mattn/go-colorable v0.1.14
 	github.com/qsocket/conpty-go v0.0.0-20230315180542-d8f8596877dc
 	github.com/rs/zerolog v1.34.0

@@ -30,6 +30,7 @@ import (
 	"runtime"
 	"strings"
 
+	"github.com/kylelemons/go-gypsy/yaml"
 	"github.com/rs/zerolog/log"
 	"github.com/urfave/cli/v3"
 )
@@ -53,20 +54,45 @@ type Config struct {
 }
 
 func (cfg *Config) Parse(c *cli.Command) error {
-	getFlagOpt(c, "group", &cfg.group)
-	getFlagOpt(c, "id", &cfg.id)
-	getFlagOpt(c, "host", &cfg.host)
-	getFlagOpt(c, "port", &cfg.port)
-	getFlagOpt(c, "description", &cfg.description)
-	getFlagOpt(c, "token", &cfg.token)
-	getFlagOpt(c, "i", &cfg.heartbeat)
+	var yamlCfg *yaml.File
+	var err error
+
+	conf := c.String("conf")
+	if conf != "" {
+		yamlCfg, err = yaml.ReadFile(conf)
+		if err != nil {
+			return fmt.Errorf(`read config file: %s`, err.Error())
+		}
+	}
+
+	fields := map[string]any{
+		"group":       &cfg.group,
+		"id":          &cfg.id,
+		"host":        &cfg.host,
+		"port":        &cfg.port,
+		"description": &cfg.description,
+		"token":       &cfg.token,
+		"heartbeat":   &cfg.heartbeat,
+		"username":    &cfg.username,
+		"reconnect":   &cfg.reconnect,
+		"ssl":         &cfg.ssl,
+		"cacert":      &cfg.cacert,
+		"cert":        &cfg.sslcert,
+		"key":         &cfg.sslkey,
+		"insecure":    &cfg.insecure,
+	}
+
+	for name, opt := range fields {
+		if yamlCfg != nil {
+			if err := getConfigOpt(yamlCfg, name, opt); err != nil {
+				return err
+			}
+		}
+		getFlagOpt(c, name, opt)
+	}
+
 	getFlagOpt(c, "f", &cfg.username)
 	getFlagOpt(c, "a", &cfg.reconnect)
-	getFlagOpt(c, "s", &cfg.ssl)
-	getFlagOpt(c, "cacert", &cfg.cacert)
-	getFlagOpt(c, "cert", &cfg.sslcert)
-	getFlagOpt(c, "key", &cfg.sslkey)
-	getFlagOpt(c, "insecure", &cfg.insecure)
 
 	if cfg.id == "" {
 		return fmt.Errorf("you must specify an id for your device")
@@ -91,6 +117,51 @@ func (cfg *Config) Parse(c *cli.Command) error {
 
 	if runtime.GOOS != "windows" && os.Getuid() != 0 {
 		return fmt.Errorf("operation not permitted, must be run as root")
+	}
+
+	return nil
+}
+
+func getConfigOpt(yamlCfg *yaml.File, name string, opt any) error {
+	var num int64
+	var err error
+
+	switch opt := opt.(type) {
+	case *string:
+		var val string
+		val, err = yamlCfg.Get(name)
+		if err == nil {
+			*opt = val
+		}
+	case *bool:
+		var val bool
+		val, err = yamlCfg.GetBool(name)
+		if err == nil {
+			*opt = val
+		}
+	case *int, *uint, *uint8, *uint16:
+		num, err = yamlCfg.GetInt(name)
+		if err == nil {
+			switch opt := opt.(type) {
+			case *int:
+				*opt = int(num)
+			case *uint:
+				*opt = uint(num)
+			case *uint8:
+				*opt = uint8(num)
+			case *uint16:
+				*opt = uint16(num)
+			}
+		}
+	default:
+		return fmt.Errorf("unsupported type for option %s", name)
+	}
+
+	if err != nil {
+		if _, ok := err.(*yaml.NodeNotFound); ok {
+			return nil
+		}
+		return fmt.Errorf(`invalud "%s": %w`, name, err)
 	}
 
 	return nil

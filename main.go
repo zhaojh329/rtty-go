@@ -66,6 +66,11 @@ func main() {
 		Version: RttyVersion,
 		Flags: []cli.Flag{
 			&cli.StringFlag{
+				Name:    "conf",
+				Aliases: []string{"c"},
+				Usage:   "config file to load",
+			},
+			&cli.StringFlag{
 				Name:    "group",
 				Aliases: []string{"g"},
 				Usage:   "Set a group for the device(max 16 chars, no spaces allowed)",
@@ -91,17 +96,20 @@ func main() {
 				Usage:   "Add a description to the device(Maximum 126 bytes)",
 			},
 			&cli.BoolFlag{
-				Name:  "a",
-				Usage: "Auto reconnect to the server",
+				Name:    "reconnect",
+				Aliases: []string{"a"},
+				Usage:   "Auto reconnect to the server",
 			},
 			&cli.Uint8Flag{
-				Name:        "i",
+				Name:        "heartbeat",
+				Aliases:     []string{"i"},
 				DefaultText: "30",
 				Usage:       "Set heartbeat interval in seconds(Default is 30s)",
 			},
 			&cli.BoolFlag{
-				Name:  "s",
-				Usage: "SSL on",
+				Name:    "ssl",
+				Aliases: []string{"s"},
+				Usage:   "SSL on",
 			},
 			&cli.StringFlag{
 				Name:    "cacert",
@@ -151,8 +159,9 @@ func main() {
 
 	if runtime.GOOS != "windows" {
 		cmd.Flags = append(cmd.Flags, &cli.StringFlag{
-			Name:  "f",
-			Usage: "Skip a second login authentication. See man login(1) about the details",
+			Name:    "username",
+			Aliases: []string{"f"},
+			Usage:   "Skip a second login authentication. See man login(1) about the details",
 		})
 	}
 
