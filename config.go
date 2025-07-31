@@ -93,8 +93,6 @@ func (cfg *Config) Parse(c *cli.Command) error {
 		return fmt.Errorf("operation not permitted, must be run as root")
 	}
 
-	log.Debug().Msgf("%+v", cfg)
-
 	return nil
 }
 

@@ -220,6 +220,8 @@ func cmdAction(c context.Context, cmd *cli.Command) error {
 		log.Info().Msg("Build Time: " + BuildTime)
 	}
 
+	log.Debug().Msgf("%+v", cfg)
+
 	rtty := &RttyClient{cfg: cfg}
 
 	rtty.Run()
