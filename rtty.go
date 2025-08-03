@@ -241,14 +241,12 @@ func (cli *RttyClient) Connect() error {
 		}
 
 		conn, err = tls.DialWithDialer(dialer, "tcp", addr, tlsConfig)
-		if err != nil {
-			return fmt.Errorf("failed to connect to %s: %w", addr, err)
-		}
 	} else {
 		conn, err = net.DialTimeout("tcp", addr, 5*time.Second)
-		if err != nil {
-			return fmt.Errorf("failed to connect to %s: %w", addr, err)
-		}
+	}
+
+	if err != nil {
+		return fmt.Errorf("failed to connect to %s: %w", addr, err)
 	}
 
 	cli.br = bufio.NewReader(conn)
