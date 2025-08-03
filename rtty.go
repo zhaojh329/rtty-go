@@ -207,7 +207,7 @@ func (cli *RttyClient) Connect() error {
 	var conn rttyConn
 	var err error
 
-	addr := cli.cfg.host + ":" + fmt.Sprint(cli.cfg.port)
+	addr := net.JoinHostPort(cli.cfg.host, fmt.Sprintf("%d", cli.cfg.port))
 
 	if cli.cfg.ssl {
 		dialer := &net.Dialer{
@@ -242,12 +242,12 @@ func (cli *RttyClient) Connect() error {
 
 		conn, err = tls.DialWithDialer(dialer, "tcp", addr, tlsConfig)
 		if err != nil {
-			return fmt.Errorf("failed to connect to %s:%d: %w", cli.cfg.host, cli.cfg.port, err)
+			return fmt.Errorf("failed to connect to %s: %w", addr, err)
 		}
 	} else {
 		conn, err = net.DialTimeout("tcp", addr, 5*time.Second)
 		if err != nil {
-			return fmt.Errorf("failed to connect to %s:%d: %w", cli.cfg.host, cli.cfg.port, err)
+			return fmt.Errorf("failed to connect to %s: %w", addr, err)
 		}
 	}
 
