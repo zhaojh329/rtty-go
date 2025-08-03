@@ -25,6 +25,7 @@
 package main
 
 import (
+	"crypto/tls"
 	"encoding/binary"
 	"fmt"
 	"net"
@@ -36,7 +37,7 @@ import (
 
 type RttyHttpConn struct {
 	active  atomic.Int64
-	conn    net.Conn
+	conn    rttyConn
 	closeCh chan struct{}
 }
 
@@ -74,44 +75,54 @@ func handleHttpMsg(cli *RttyClient, data []byte) error {
 }
 
 func runHttpProxy(cli *RttyClient, isHttps bool, saddr [18]byte, daddr string, dport uint16, data []byte) {
+	var conn rttyConn
+	var err error
+
+	addr := net.JoinHostPort(daddr, fmt.Sprintf("%d", dport))
+
 	if isHttps {
+		dialer := &net.Dialer{
+			Timeout: 3 * time.Second,
+		}
+		conn, err = tls.DialWithDialer(dialer, "tcp", addr, &tls.Config{InsecureSkipVerify: true})
 	} else {
-		conn, err := net.DialTimeout("tcp", fmt.Sprintf("%s:%d", daddr, dport), 3*time.Second)
-		if err != nil {
-			log.Error().Err(err).Msg("Failed to connect to target address")
-			cli.SendHttpMsg(saddr, nil)
+		conn, err = net.DialTimeout("tcp", addr, 3*time.Second)
+	}
+
+	if err != nil {
+		log.Error().Err(err).Msg("Failed to connect to target address")
+		cli.SendHttpMsg(saddr, nil)
+		return
+	}
+
+	c := &RttyHttpConn{
+		closeCh: make(chan struct{}),
+		conn:    conn,
+	}
+
+	c.active.Store(time.Now().Add(httpTimeOut).Unix())
+
+	cli.httpCons.Store(saddr, c)
+
+	defer func() {
+		cli.httpCons.Delete(saddr)
+		close(c.closeCh)
+		conn.Close()
+	}()
+
+	conn.Write(data)
+
+	buf := make([]byte, 1024*63)
+
+	go c.activeCheck()
+
+	for {
+		n, _ := conn.Read(buf)
+		cli.SendHttpMsg(saddr, buf[:n])
+		if n == 0 {
 			return
 		}
-
-		c := &RttyHttpConn{
-			closeCh: make(chan struct{}),
-			conn:    conn,
-		}
-
 		c.active.Store(time.Now().Add(httpTimeOut).Unix())
-
-		cli.httpCons.Store(saddr, c)
-
-		defer func() {
-			cli.httpCons.Delete(saddr)
-			close(c.closeCh)
-			conn.Close()
-		}()
-
-		conn.Write(data)
-
-		buf := make([]byte, 1024*63)
-
-		go c.activeCheck()
-
-		for {
-			n, _ := conn.Read(buf)
-			cli.SendHttpMsg(saddr, buf[:n])
-			if n == 0 {
-				return
-			}
-			c.active.Store(time.Now().Add(httpTimeOut).Unix())
-		}
 	}
 }
 
