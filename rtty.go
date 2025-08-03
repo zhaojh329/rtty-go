@@ -466,11 +466,11 @@ func handleLoginMsg(cli *RttyClient, data []byte) error {
 
 			cli.sessions.Store(sid, s)
 
+			cli.ntty++
+
 			go s.Run(cli)
 		}
 	}
-
-	cli.ntty++
 
 	bb := bytebufferpool.Get()
 	defer bytebufferpool.Put(bb)
