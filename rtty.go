@@ -84,7 +84,9 @@ const (
 )
 
 type RttyClient struct {
-	sessions         sync.Map
+	sessions sync.Map
+	httpCons sync.Map
+
 	conn             rttyConn
 	cfg              Config
 	ntty             int
@@ -335,6 +337,12 @@ func (cli *RttyClient) Close() {
 		s.term.Close()
 		s.fc.reset()
 		cli.sessions.Delete(key)
+		return true
+	})
+
+	cli.httpCons.Range(func(key, value any) bool {
+		con := value.(*RttyHttpConn)
+		con.conn.Close()
 		return true
 	})
 }

@@ -28,14 +28,11 @@ import (
 	"encoding/binary"
 	"fmt"
 	"net"
-	"sync"
 	"sync/atomic"
 	"time"
 
 	"github.com/rs/zerolog/log"
 )
-
-var rttyHttpCons sync.Map
 
 type RttyHttpConn struct {
 	active  atomic.Int64
@@ -65,7 +62,7 @@ func handleHttpMsg(cli *RttyClient, data []byte) error {
 		return nil
 	}
 
-	if v, ok := rttyHttpCons.Load(saddr); ok {
+	if v, ok := cli.httpCons.Load(saddr); ok {
 		conn := v.(*RttyHttpConn)
 		conn.Write(data)
 		return nil
@@ -93,10 +90,10 @@ func runHttpProxy(cli *RttyClient, isHttps bool, saddr [18]byte, daddr string, d
 
 		c.active.Store(time.Now().Add(httpTimeOut).Unix())
 
-		rttyHttpCons.Store(saddr, c)
+		cli.httpCons.Store(saddr, c)
 
 		defer func() {
-			rttyHttpCons.Delete(saddr)
+			cli.httpCons.Delete(saddr)
 			close(c.closeCh)
 			conn.Close()
 		}()
