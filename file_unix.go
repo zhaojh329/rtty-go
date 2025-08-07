@@ -54,7 +54,8 @@ const (
 )
 
 const (
-	fileSizeLimit  = 2 * 1024 * 1024 * 1024 // 2 GB
+	fileSizeLimit int64 = 2 * 1024 * 1024 * 1024 // 2 GB
+
 	fileCtlMsgSize = 129
 )
 
