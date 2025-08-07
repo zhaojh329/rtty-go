@@ -22,6 +22,7 @@ jobs:
         run: |
           COMPRESS=1 ./build.sh linux amd64
           COMPRESS=1 ./build.sh linux arm64
+          COMPRESS=1 ./build.sh linux arm
           COMPRESS=1 ./build.sh windows amd64
 
       - name: Upload Release Asset
@@ -30,5 +31,6 @@ jobs:
           files: |
             rtty-${{ steps.get-version.outputs.version-without-v }}-linux-amd64.tar.bz2
             rtty-${{ steps.get-version.outputs.version-without-v }}-linux-arm64.tar.bz2
+            rtty-${{ steps.get-version.outputs.version-without-v }}-linux-arm.tar.bz2
             rtty-${{ steps.get-version.outputs.version-without-v }}-windows-amd64.tar.bz2
           draft: true
