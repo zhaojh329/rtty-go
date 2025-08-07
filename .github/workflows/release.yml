@@ -7,16 +7,18 @@ on:
 
 jobs:
   build:
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
 
       - id: get-version
-        uses: battila7/get-version-action@v2
+        run: |
+          VERSION="${GITHUB_REF#refs/tags/v}"
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
 
       - uses: actions/setup-go@v5
         with:
-          go-version: '1.24.4'
+          go-version: 'stable'
 
       - name: Build rtty release
         run: |
@@ -29,8 +31,8 @@ jobs:
         uses: softprops/action-gh-release@v1
         with:
           files: |
-            rtty-${{ steps.get-version.outputs.version-without-v }}-linux-amd64.tar.bz2
-            rtty-${{ steps.get-version.outputs.version-without-v }}-linux-arm64.tar.bz2
-            rtty-${{ steps.get-version.outputs.version-without-v }}-linux-arm.tar.bz2
-            rtty-${{ steps.get-version.outputs.version-without-v }}-windows-amd64.tar.bz2
+            rtty-${{ steps.get-version.outputs.version }}-linux-amd64.tar.bz2
+            rtty-${{ steps.get-version.outputs.version }}-linux-arm64.tar.bz2
+            rtty-${{ steps.get-version.outputs.version }}-linux-arm.tar.bz2
+            rtty-${{ steps.get-version.outputs.version }}-windows-amd64.tar.bz2
           draft: true
