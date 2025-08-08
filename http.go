@@ -102,7 +102,11 @@ func (c *RttyHttpConn) run(cli *RttyClient, isHttps bool, saddr [18]byte, daddr 
 
 	for {
 		n, _ := conn.Read(buf)
-		cli.SendHttpMsg(saddr, buf[:n])
+		err := cli.SendHttpMsg(saddr, buf[:n])
+		if err != nil {
+			log.Error().Err(err).Msg("send http msg fail")
+			return
+		}
 		if n == 0 {
 			return
 		}
@@ -128,8 +132,12 @@ func (c *RttyHttpConn) loop() {
 	for {
 		select {
 		case bb := <-c.data:
-			c.Write(bb.B)
+			_, err := c.Write(bb.B)
 			bytebufferpool.Put(bb)
+			if err != nil {
+				c.conn.Close()
+				return
+			}
 		case <-tick.C:
 			if time.Now().Unix() > c.active.Load() {
 				c.conn.Close()
