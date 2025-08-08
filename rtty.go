@@ -68,7 +68,7 @@ type RttyClient struct {
 	sessions sync.Map
 	httpCons sync.Map
 
-	conn             rttyConn
+	conn             net.Conn
 	cfg              Config
 	ntty             int
 	heartbeatTimer   *time.Timer
@@ -78,13 +78,6 @@ type RttyClient struct {
 	br               *bufio.Reader
 	head             [3]byte
 	buf              []byte
-}
-
-type rttyConn interface {
-	Read(b []byte) (n int, err error)
-	Write(b []byte) (n int, err error)
-	Close() error
-	SetReadDeadline(t time.Time) error
 }
 
 var fixedMsgLens = map[byte]int{
@@ -185,7 +178,7 @@ func (cli *RttyClient) Run() {
 }
 
 func (cli *RttyClient) Connect() error {
-	var conn rttyConn
+	var conn net.Conn
 	var err error
 
 	addr := net.JoinHostPort(cli.cfg.host, fmt.Sprintf("%d", cli.cfg.port))

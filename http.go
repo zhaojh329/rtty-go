@@ -19,7 +19,7 @@ import (
 
 type RttyHttpConn struct {
 	active  atomic.Int64
-	conn    rttyConn
+	conn    net.Conn
 	data    chan *bytebufferpool.ByteBuffer
 	closeCh chan struct{}
 }
@@ -68,7 +68,7 @@ func handleHttpMsg(cli *RttyClient, data []byte) error {
 }
 
 func (c *RttyHttpConn) run(cli *RttyClient, isHttps bool, saddr [18]byte, daddr string, dport uint16) {
-	var conn rttyConn
+	var conn net.Conn
 	var err error
 
 	addr := net.JoinHostPort(daddr, fmt.Sprintf("%d", dport))
