@@ -33,11 +33,13 @@ import (
 	"time"
 
 	"github.com/rs/zerolog/log"
+	"github.com/valyala/bytebufferpool"
 )
 
 type RttyHttpConn struct {
 	active  atomic.Int64
 	conn    rttyConn
+	data    chan *bytebufferpool.ByteBuffer
 	closeCh chan struct{}
 }
 
@@ -63,18 +65,28 @@ func handleHttpMsg(cli *RttyClient, data []byte) error {
 		return nil
 	}
 
-	if v, ok := cli.httpCons.Load(saddr); ok {
+	conn := &RttyHttpConn{
+		closeCh: make(chan struct{}),
+		data:    make(chan *bytebufferpool.ByteBuffer, 100),
+	}
+
+	bb := bytebufferpool.Get()
+	bb.Write(data)
+
+	if v, loaded := cli.httpCons.LoadOrStore(saddr, conn); loaded {
 		conn := v.(*RttyHttpConn)
-		conn.Write(data)
+		conn.data <- bb
 		return nil
 	}
 
-	go runHttpProxy(cli, isHttps, saddr, daddr, dport, data)
+	conn.data <- bb
+
+	go conn.run(cli, isHttps, saddr, daddr, dport)
 
 	return nil
 }
 
-func runHttpProxy(cli *RttyClient, isHttps bool, saddr [18]byte, daddr string, dport uint16, data []byte) {
+func (c *RttyHttpConn) run(cli *RttyClient, isHttps bool, saddr [18]byte, daddr string, dport uint16) {
 	var conn rttyConn
 	var err error
 
@@ -95,14 +107,7 @@ func runHttpProxy(cli *RttyClient, isHttps bool, saddr [18]byte, daddr string, d
 		return
 	}
 
-	c := &RttyHttpConn{
-		closeCh: make(chan struct{}),
-		conn:    conn,
-	}
-
-	c.active.Store(time.Now().Add(httpTimeOut).Unix())
-
-	cli.httpCons.Store(saddr, c)
+	c.conn = conn
 
 	defer func() {
 		cli.httpCons.Delete(saddr)
@@ -110,11 +115,9 @@ func runHttpProxy(cli *RttyClient, isHttps bool, saddr [18]byte, daddr string, d
 		conn.Close()
 	}()
 
-	conn.Write(data)
+	go c.loop()
 
 	buf := make([]byte, 1024*63)
-
-	go c.activeCheck()
 
 	for {
 		n, _ := conn.Read(buf)
@@ -131,12 +134,21 @@ func (c *RttyHttpConn) Write(data []byte) (int, error) {
 	return c.conn.Write(data)
 }
 
-func (c *RttyHttpConn) activeCheck() {
+func (c *RttyHttpConn) loop() {
 	tick := time.NewTicker(5 * time.Second)
-	defer tick.Stop()
+	defer func() {
+		tick.Stop()
+
+		for bb := range c.data {
+			bytebufferpool.Put(bb)
+		}
+	}()
 
 	for {
 		select {
+		case bb := <-c.data:
+			c.Write(bb.B)
+			bytebufferpool.Put(bb)
 		case <-tick.C:
 			if time.Now().Unix() > c.active.Load() {
 				c.conn.Close()
