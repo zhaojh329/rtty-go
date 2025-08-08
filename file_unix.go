@@ -18,6 +18,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/zhaojh329/rtty-go/proto"
 	"github.com/zhaojh329/rtty-go/utils"
 
 	"github.com/rs/zerolog/log"
@@ -57,10 +58,10 @@ func handleFileMsg(cli *RttyClient, data []byte) error {
 	data = data[33:]
 
 	switch typ {
-	case MsgTypeFileInfo:
+	case proto.MsgTypeFileInfo:
 		s.fc.startDownload(data)
 
-	case MsgTypeFileData:
+	case proto.MsgTypeFileData:
 		if len(data) > 0 {
 			if s.fc.file != nil {
 				s.fc.file.Write(data)
@@ -71,7 +72,7 @@ func handleFileMsg(cli *RttyClient, data []byte) error {
 					if s.fc.remainSize == 0 {
 						s.fc.reset()
 					} else {
-						cli.SendFileMsg(s.sid, MsgTypeFileAck, nil)
+						cli.SendFileMsg(s.sid, proto.MsgTypeFileAck, nil)
 					}
 				}
 			}
@@ -79,10 +80,10 @@ func handleFileMsg(cli *RttyClient, data []byte) error {
 			s.fc.reset()
 		}
 
-	case MsgTypeFileAck:
+	case proto.MsgTypeFileAck:
 		s.fc.sendData()
 
-	case MsgTypeFileAbort:
+	case proto.MsgTypeFileAbort:
 		s.fc.sendControlMsg(MsgTypeFileCtlAbort, nil)
 		s.fc.reset()
 	}
@@ -160,7 +161,7 @@ func (ctx *RttyFileContext) detect(data []byte) bool {
 		ctx.uid = uid
 		ctx.gid = gid
 
-		ctx.ses.cli.SendFileMsg(ctx.ses.sid, MsgTypeFileRecv, nil)
+		ctx.ses.cli.SendFileMsg(ctx.ses.sid, proto.MsgTypeFileRecv, nil)
 
 		ctx.sendControlMsg(MsgTypeFileCtlRequestAccept, nil)
 	} else {
@@ -257,7 +258,7 @@ func (ctx *RttyFileContext) startUpload(path string) error {
 	ctx.totalSize = uint32(info.Size())
 	ctx.remainSize = ctx.totalSize
 
-	ctx.ses.cli.SendFileMsg(ctx.ses.sid, MsgTypeFileSend, []byte(filepath.Base(path)))
+	ctx.ses.cli.SendFileMsg(ctx.ses.sid, proto.MsgTypeFileSend, []byte(filepath.Base(path)))
 
 	log.Debug().Msgf("upload file: %s, size: %d bytes", path, ctx.totalSize)
 
@@ -293,7 +294,7 @@ func (ctx *RttyFileContext) sendData() {
 	if err != nil {
 		if err != io.EOF {
 			log.Error().Err(err).Msgf("failed to read file %s", ctx.ses.sid)
-			ctx.ses.cli.SendFileMsg(ctx.ses.sid, MsgTypeFileAbort, nil)
+			ctx.ses.cli.SendFileMsg(ctx.ses.sid, proto.MsgTypeFileAbort, nil)
 			ctx.sendControlMsg(MsgTypeFileCtlErr, nil)
 			ctx.reset()
 			return
@@ -302,7 +303,7 @@ func (ctx *RttyFileContext) sendData() {
 
 	ctx.remainSize -= uint32(n)
 
-	ctx.ses.cli.SendFileMsg(ctx.ses.sid, MsgTypeFileData, ctx.buf[:n])
+	ctx.ses.cli.SendFileMsg(ctx.ses.sid, proto.MsgTypeFileData, ctx.buf[:n])
 
 	if n == 0 {
 		ctx.reset()
@@ -310,7 +311,7 @@ func (ctx *RttyFileContext) sendData() {
 	}
 
 	if ctx.notifyProgress() != nil {
-		ctx.ses.cli.SendFileMsg(ctx.ses.sid, MsgTypeFileAbort, nil)
+		ctx.ses.cli.SendFileMsg(ctx.ses.sid, proto.MsgTypeFileAbort, nil)
 		ctx.reset()
 		return
 	}

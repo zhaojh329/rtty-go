@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/rs/zerolog/log"
+	"github.com/zhaojh329/rtty-go/proto"
 )
 
 const (
@@ -158,7 +159,7 @@ func parseCmdMsg(data []byte) (string, string, string, []string, error) {
 
 func cmdErrReply(cli *RttyClient, token string, err int) {
 	msg := fmt.Sprintf(`{"token":"%s","attrs":{"err":%d,"msg":"%s"}}`, token, err, cmderr2str(err))
-	cli.SendMsg(MsgTypeCmd, msg)
+	cli.WriteMsg(proto.MsgTypeCmd, msg)
 }
 
 func cmderr2str(err int) string {
@@ -182,5 +183,5 @@ func cmdReply(cli *RttyClient, token string, code int, stdout []byte, stderr []b
 	stdoutB64 := base64.StdEncoding.EncodeToString(stdout)
 	stderrB64 := base64.StdEncoding.EncodeToString(stderr)
 	msg := fmt.Sprintf(`{"token":"%s","attrs":{"code":%d,"stdout":"%s","stderr":"%s"}}`, token, code, stdoutB64, stderrB64)
-	cli.SendMsg(MsgTypeCmd, msg)
+	cli.WriteMsg(proto.MsgTypeCmd, msg)
 }

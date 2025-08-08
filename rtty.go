@@ -6,7 +6,6 @@
 package main
 
 import (
-	"bufio"
 	"crypto/tls"
 	"crypto/x509"
 	"encoding/binary"
@@ -21,40 +20,7 @@ import (
 	"github.com/rs/zerolog/log"
 	"github.com/shirou/gopsutil/v3/host"
 	"github.com/valyala/bytebufferpool"
-)
-
-const (
-	MsgTypeRegister = byte(iota)
-	MsgTypeLogin
-	MsgTypeLogout
-	MsgTypeTermData
-	MsgTypeWinsize
-	MsgTypeCmd
-	MsgTypeHeartbeat
-	MsgTypeFile
-	MsgTypeHttp
-	MsgTypeAck
-)
-
-const (
-	MsgTypeFileSend = byte(iota)
-	MsgTypeFileRecv
-	MsgTypeFileInfo
-	MsgTypeFileData
-	MsgTypeFileAck
-	MsgTypeFileAbort
-)
-
-const (
-	MsgRegAttrHeartbeat = byte(iota)
-	MsgRegAttrDevid
-	MsgRegAttrDescription
-	MsgRegAttrToken
-	MsgRegAttrGroup
-)
-
-const (
-	MsgHeartbeatAttrUptime = byte(iota)
+	"github.com/zhaojh329/rtty-go/proto"
 )
 
 const (
@@ -75,32 +41,20 @@ type RttyClient struct {
 	lastHeartbeat    time.Time
 	waitingHeartbeat bool
 	mu               sync.Mutex
-	br               *bufio.Reader
-	head             [3]byte
-	buf              []byte
-}
 
-var minimumMsgLens = map[byte]int{
-	MsgTypeRegister: 1,
-	MsgTypeLogin:    32,
-	MsgTypeLogout:   32,
-	MsgTypeTermData: 33,
-	MsgTypeWinsize:  36,
-	MsgTypeFile:     33,
-	MsgTypeAck:      34,
-	MsgTypeHttp:     26,
+	msg *proto.MsgReaderWriter
 }
 
 var msgHandlers = map[byte]func(*RttyClient, []byte) error{
-	MsgTypeHeartbeat: handleHeartbeatMsg,
-	MsgTypeLogin:     handleLoginMsg,
-	MsgTypeLogout:    handleLogoutMsg,
-	MsgTypeTermData:  handleTermDataMsg,
-	MsgTypeWinsize:   handleTermWinsizeMsg,
-	MsgTypeAck:       handleAckMsg,
-	MsgTypeFile:      handleFileMsg,
-	MsgTypeCmd:       handleCmdMsg,
-	MsgTypeHttp:      handleHttpMsg,
+	proto.MsgTypeHeartbeat: handleHeartbeatMsg,
+	proto.MsgTypeLogin:     handleLoginMsg,
+	proto.MsgTypeLogout:    handleLogoutMsg,
+	proto.MsgTypeTermData:  handleTermDataMsg,
+	proto.MsgTypeWinsize:   handleTermWinsizeMsg,
+	proto.MsgTypeAck:       handleAckMsg,
+	proto.MsgTypeFile:      handleFileMsg,
+	proto.MsgTypeCmd:       handleCmdMsg,
+	proto.MsgTypeHttp:      handleHttpMsg,
 }
 
 func (cli *RttyClient) Run() {
@@ -135,8 +89,8 @@ func (cli *RttyClient) Run() {
 		return
 	}
 
-	if typ != MsgTypeRegister {
-		log.Error().Msgf("register msg expected first, got %s", msgTypeName(typ))
+	if typ != proto.MsgTypeRegister {
+		log.Error().Msgf("register msg expected first, got %s", proto.MsgTypeName(typ))
 		return
 	}
 
@@ -159,17 +113,17 @@ func (cli *RttyClient) Run() {
 			return
 		}
 
-		log.Debug().Msgf("recv msg: %s", msgTypeName(typ))
+		log.Debug().Msgf("recv msg: %s", proto.MsgTypeName(typ))
 
 		handler, ok := msgHandlers[typ]
 		if !ok {
-			log.Error().Msgf("unexpected message '%s'", msgTypeName(typ))
+			log.Error().Msgf("unexpected message '%s'", proto.MsgTypeName(typ))
 			return
 		}
 
 		err = handler(cli, data)
 		if err != nil {
-			log.Error().Err(err).Msgf("failed to handle message '%s'", msgTypeName(typ))
+			log.Error().Err(err).Msgf("failed to handle message '%s'", proto.MsgTypeName(typ))
 			return
 		}
 
@@ -223,13 +177,20 @@ func (cli *RttyClient) Connect() error {
 		return fmt.Errorf("failed to connect to %s: %w", addr, err)
 	}
 
-	cli.br = bufio.NewReader(conn)
-	cli.buf = make([]byte, 0, 4096)
+	cli.msg = proto.NewMsgReaderWriter(proto.RoleRtty, conn)
 	cli.conn = conn
 
 	log.Info().Msgf("Connected to %s:%d", cli.cfg.host, cli.cfg.port)
 
 	return nil
+}
+
+func (cli *RttyClient) ReadMsg() (byte, []byte, error) {
+	return cli.msg.Read()
+}
+
+func (cli *RttyClient) WriteMsg(typ byte, data ...any) error {
+	return cli.msg.Write(typ, data...)
 }
 
 func (cli *RttyClient) Register() error {
@@ -240,52 +201,22 @@ func (cli *RttyClient) Register() error {
 
 	bb.WriteByte(rttyProtoVer)
 
-	putMsgAttr(bb, MsgRegAttrHeartbeat, cfg.heartbeat)
-	putMsgAttr(bb, MsgRegAttrDevid, cfg.id)
+	putMsgAttr(bb, proto.MsgRegAttrHeartbeat, cfg.heartbeat)
+	putMsgAttr(bb, proto.MsgRegAttrDevid, cfg.id)
 
 	if cfg.group != "" {
-		putMsgAttr(bb, MsgRegAttrGroup, cfg.group)
+		putMsgAttr(bb, proto.MsgRegAttrGroup, cfg.group)
 	}
 
 	if cfg.description != "" {
-		putMsgAttr(bb, MsgRegAttrDescription, cfg.description)
+		putMsgAttr(bb, proto.MsgRegAttrDescription, cfg.description)
 	}
 
 	if cfg.token != "" {
-		putMsgAttr(bb, MsgRegAttrToken, cfg.token)
+		putMsgAttr(bb, proto.MsgRegAttrToken, cfg.token)
 	}
 
-	return cli.SendMsg(MsgTypeRegister, bb)
-}
-
-func (cli *RttyClient) ReadMsg() (byte, []byte, error) {
-	_, err := io.ReadFull(cli.br, cli.head[:])
-	if err != nil {
-		return 0, nil, err
-	}
-
-	typ := cli.head[0]
-	msgLen := binary.BigEndian.Uint16(cli.head[1:])
-
-	if fixedMsgLen, ok := minimumMsgLens[typ]; ok {
-		if msgLen < uint16(fixedMsgLen) {
-			return 0, nil, fmt.Errorf("invalid message length for %s: at least %d, got %d",
-				msgTypeName(typ), fixedMsgLen, msgLen)
-		}
-	}
-
-	if cap(cli.buf) < int(msgLen) {
-		cli.buf = make([]byte, msgLen)
-	} else {
-		cli.buf = cli.buf[:msgLen]
-	}
-
-	_, err = io.ReadFull(cli.br, cli.buf)
-	if err != nil {
-		return 0, nil, err
-	}
-
-	return typ, cli.buf, nil
+	return cli.WriteMsg(proto.MsgTypeRegister, bb)
 }
 
 func (cli *RttyClient) Close() {
@@ -344,8 +275,8 @@ func (cli *RttyClient) startHeartbeat() {
 			bb := bytebufferpool.Get()
 			defer bytebufferpool.Put(bb)
 
-			putMsgAttr(bb, MsgHeartbeatAttrUptime, uint32(uptime))
-			cli.SendMsg(MsgTypeHeartbeat, bb)
+			putMsgAttr(bb, proto.MsgHeartbeatAttrUptime, uint32(uptime))
+			cli.WriteMsg(proto.MsgTypeHeartbeat, bb)
 
 			cli.lastHeartbeat = time.Now()
 			cli.waitingHeartbeat = true
@@ -356,57 +287,11 @@ func (cli *RttyClient) startHeartbeat() {
 }
 
 func (cli *RttyClient) SendFileMsg(sid string, typ byte, data []byte) error {
-	bb := bytebufferpool.Get()
-	defer bytebufferpool.Put(bb)
-
-	bb.WriteString(sid)
-	bb.WriteByte(typ)
-
-	if data != nil {
-		bb.Write(data)
-	}
-
-	return cli.SendMsg(MsgTypeFile, bb)
+	return cli.WriteMsg(proto.MsgTypeFile, sid, typ, data)
 }
 
 func (cli *RttyClient) SendHttpMsg(saddr [18]byte, data []byte) error {
-	bb := bytebufferpool.Get()
-	defer bytebufferpool.Put(bb)
-
-	bb.Write(saddr[:])
-
-	if data != nil {
-		bb.Write(data)
-	}
-
-	return cli.SendMsg(MsgTypeHttp, bb)
-}
-
-func (cli *RttyClient) SendMsg(typ byte, data any) error {
-	bb := bytebufferpool.Get()
-	defer bytebufferpool.Put(bb)
-
-	var length int
-
-	bb.WriteByte(typ)
-	bb.Write([]byte{0, 0})
-
-	switch v := data.(type) {
-	case []byte:
-		length, _ = bb.Write(v)
-	case string:
-		length, _ = bb.WriteString(v)
-	case *bytebufferpool.ByteBuffer:
-		length, _ = bb.Write(v.B)
-	default:
-		return fmt.Errorf("unsupported data type: %T", v)
-	}
-
-	binary.BigEndian.PutUint16(bb.B[1:], uint16(length))
-
-	_, err := bb.WriteTo(cli.conn)
-
-	return err
+	return cli.WriteMsg(proto.MsgTypeHttp, saddr[:], data)
 }
 
 func handleHeartbeatMsg(cli *RttyClient, data []byte) error {
@@ -446,13 +331,7 @@ func handleLoginMsg(cli *RttyClient, data []byte) error {
 		}
 	}
 
-	bb := bytebufferpool.Get()
-	defer bytebufferpool.Put(bb)
-
-	bb.WriteString(sid)
-	bb.WriteByte(retCode)
-
-	cli.SendMsg(MsgTypeLogin, bb)
+	cli.WriteMsg(proto.MsgTypeLogin, sid, retCode)
 
 	return nil
 }
@@ -552,13 +431,7 @@ func (s *TermSession) Write(buf []byte) (int, error) {
 		return length, nil
 	}
 
-	bb := bytebufferpool.Get()
-	defer bytebufferpool.Put(bb)
-
-	bb.WriteString(s.sid)
-	bb.Write(buf)
-
-	s.cli.SendMsg(MsgTypeTermData, bb)
+	s.cli.WriteMsg(proto.MsgTypeTermData, s.sid, buf)
 
 	s.term.WaitAck(length)
 
@@ -598,40 +471,13 @@ func (s *TermSession) close(cli *RttyClient) {
 	}
 	s.mu.Unlock()
 
-	cli.SendMsg(MsgTypeLogout, s.sid)
+	cli.WriteMsg(proto.MsgTypeLogout, s.sid)
 
 	s.term.Close()
 
 	cli.ntty--
 
 	log.Info().Msgf("delete tty %s", s.sid)
-}
-
-func msgTypeName(typ byte) string {
-	switch typ {
-	case MsgTypeRegister:
-		return "register"
-	case MsgTypeLogin:
-		return "login"
-	case MsgTypeLogout:
-		return "logout"
-	case MsgTypeTermData:
-		return "termdata"
-	case MsgTypeWinsize:
-		return "winsize"
-	case MsgTypeCmd:
-		return "cmd"
-	case MsgTypeHeartbeat:
-		return "heartbeat"
-	case MsgTypeFile:
-		return "file"
-	case MsgTypeHttp:
-		return "http"
-	case MsgTypeAck:
-		return "ack"
-	default:
-		return fmt.Sprintf("unknown(%d)", typ)
-	}
 }
 
 func putMsgAttr(bb *bytebufferpool.ByteBuffer, attrType byte, val any) {
@@ -651,13 +497,17 @@ func putMsgAttr(bb *bytebufferpool.ByteBuffer, attrType byte, val any) {
 		bb.WriteByte(v)
 		length = 1
 	case uint16:
-		data := make([]byte, 2)
-		binary.BigEndian.PutUint16(data, v)
-		length, _ = bb.Write(data)
+		bb.WriteByte(0)
+		bb.WriteByte(0)
+		length = 2
+		binary.BigEndian.PutUint16(bb.B[bb.Len()-2:], v)
 	case uint32:
-		data := make([]byte, 4)
-		binary.BigEndian.PutUint32(data, v)
-		length, _ = bb.Write(data)
+		bb.WriteByte(0)
+		bb.WriteByte(0)
+		bb.WriteByte(0)
+		bb.WriteByte(0)
+		length = 4
+		binary.BigEndian.PutUint32(bb.B[bb.Len()-4:], v)
 	default:
 		panic(fmt.Sprintf("unsupported attribute type: %T", v))
 	}

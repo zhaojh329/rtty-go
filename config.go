@@ -14,6 +14,7 @@ import (
 	"github.com/kylelemons/go-gypsy/yaml"
 	"github.com/rs/zerolog/log"
 	"github.com/urfave/cli/v3"
+	"github.com/zhaojh329/rtty-go/proto"
 )
 
 type Config struct {
@@ -79,15 +80,15 @@ func (cfg *Config) Parse(c *cli.Command) error {
 		return fmt.Errorf("you must specify an id for your device")
 	}
 
-	if strings.ContainsAny(cfg.id, " ") || len(cfg.id) > 32 {
+	if strings.ContainsAny(cfg.id, " ") || len(cfg.id) > proto.MaximumDevIDLen {
 		return fmt.Errorf("invalid device id: must be 1-32 characters and cannot contain spaces")
 	}
 
-	if strings.ContainsAny(cfg.group, " ") || len(cfg.group) > 16 {
+	if strings.ContainsAny(cfg.group, " ") || len(cfg.group) > proto.MaximumGroupLen {
 		return fmt.Errorf("invalid group: must be 1-16 characters and cannot contain spaces")
 	}
 
-	if len(cfg.description) > 126 {
+	if len(cfg.description) > proto.MaximumDescLen {
 		return fmt.Errorf("description too long: must be 1-126 characters")
 	}
 
