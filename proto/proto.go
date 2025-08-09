@@ -210,6 +210,10 @@ func (msg *MsgReaderWriter) Write(typ byte, data ...any) error {
 		total += length
 	}
 
+	if total > 0xffff {
+		return fmt.Errorf("data too long, exceeds 0xffff")
+	}
+
 	binary.BigEndian.PutUint16(bb.B[1:], uint16(total))
 
 	_, err := bb.WriteTo(msg.conn)

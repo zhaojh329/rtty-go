@@ -20,9 +20,8 @@ import (
 )
 
 const (
-	rttyCmdRunningLimit  = 5
-	rttyCmdExecTimeout   = 30 * time.Second
-	rttyCmdMaxOutputSize = 1024 * 1024
+	rttyCmdRunningLimit = 5
+	rttyCmdExecTimeout  = 30 * time.Second
 )
 
 const (
@@ -107,12 +106,6 @@ func executeCommand(cli *RttyClient, u *user.User, cmdPath string, params []stri
 	stdoutBytes := stdout.Bytes()
 	stderrBytes := stderr.Bytes()
 
-	if len(stdoutBytes)+len(stderrBytes) > rttyCmdMaxOutputSize {
-		log.Error().Msgf("command output too large: %s, token: %s", cmdPath, token)
-		cmdErrReply(cli, token, rttyCmdErrRespTooBig)
-		return
-	}
-
 	cmdReply(cli, token, exitCode, stdoutBytes, stderrBytes)
 }
 
@@ -183,5 +176,11 @@ func cmdReply(cli *RttyClient, token string, code int, stdout []byte, stderr []b
 	stdoutB64 := base64.StdEncoding.EncodeToString(stdout)
 	stderrB64 := base64.StdEncoding.EncodeToString(stderr)
 	msg := fmt.Sprintf(`{"token":"%s","attrs":{"code":%d,"stdout":"%s","stderr":"%s"}}`, token, code, stdoutB64, stderrB64)
+
+	if len(msg) > 0xffff {
+		cmdErrReply(cli, token, rttyCmdErrRespTooBig)
+		return
+	}
+
 	cli.WriteMsg(proto.MsgTypeCmd, msg)
 }
