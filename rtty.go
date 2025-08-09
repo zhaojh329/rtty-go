@@ -80,7 +80,7 @@ type RttyClient struct {
 	buf              []byte
 }
 
-var fixedMsgLens = map[byte]int{
+var minimumMsgLens = map[byte]int{
 	MsgTypeRegister: 1,
 	MsgTypeLogin:    32,
 	MsgTypeLogout:   32,
@@ -267,7 +267,7 @@ func (cli *RttyClient) ReadMsg() (byte, []byte, error) {
 	typ := cli.head[0]
 	msgLen := binary.BigEndian.Uint16(cli.head[1:])
 
-	if fixedMsgLen, ok := fixedMsgLens[typ]; ok {
+	if fixedMsgLen, ok := minimumMsgLens[typ]; ok {
 		if msgLen < uint16(fixedMsgLen) {
 			return 0, nil, fmt.Errorf("invalid message length for %s: at least %d, got %d",
 				msgTypeName(typ), fixedMsgLen, msgLen)
