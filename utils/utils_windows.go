@@ -12,13 +12,6 @@ import (
 	"fmt"
 )
 
-type MountInfo struct {
-	Device     string
-	MountPoint string
-	FileSystem string
-	Options    string
-}
-
 func CheckSpaceAvailable(savePath string, totalSize uint64) error {
 	return fmt.Errorf("not supported on Windows")
 }
