@@ -84,11 +84,11 @@ var fixedMsgLens = map[byte]int{
 	MsgTypeRegister: 1,
 	MsgTypeLogin:    32,
 	MsgTypeLogout:   32,
-	MsgTypeTermData: 32,
+	MsgTypeTermData: 33,
 	MsgTypeWinsize:  36,
 	MsgTypeFile:     33,
 	MsgTypeAck:      34,
-	MsgTypeHttp:     25,
+	MsgTypeHttp:     26,
 }
 
 var msgHandlers = map[byte]func(*RttyClient, []byte) error{

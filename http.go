@@ -41,11 +41,6 @@ func handleHttpMsg(cli *RttyClient, data []byte) error {
 	dport := binary.BigEndian.Uint16(data[4:])
 	data = data[6:]
 
-	if len(data) == 0 {
-		log.Debug().Msg("Received empty HTTP message")
-		return nil
-	}
-
 	conn := &RttyHttpConn{
 		closeCh: make(chan struct{}),
 		data:    make(chan *bytebufferpool.ByteBuffer, 100),
