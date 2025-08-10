@@ -10,6 +10,7 @@ import (
 	"encoding/binary"
 	"fmt"
 	"net"
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -22,6 +23,18 @@ type RttyHttpConn struct {
 	conn    net.Conn
 	data    chan *bytebufferpool.ByteBuffer
 	closeCh chan struct{}
+}
+
+var httpBufPool = sync.Pool{
+	New: func() any {
+		return &HttpBuf{
+			buf: make([]byte, 1024*32),
+		}
+	},
+}
+
+type HttpBuf struct {
+	buf []byte
 }
 
 const (
@@ -93,11 +106,12 @@ func (c *RttyHttpConn) run(cli *RttyClient, isHttps bool, saddr [18]byte, daddr 
 
 	go c.loop()
 
-	buf := make([]byte, 1024*63)
+	hb := httpBufPool.Get().(*HttpBuf)
+	defer httpBufPool.Put(hb)
 
 	for {
-		n, _ := conn.Read(buf)
-		err := cli.SendHttpMsg(saddr, buf[:n])
+		n, _ := conn.Read(hb.buf)
+		err := cli.SendHttpMsg(saddr, hb.buf[:n])
 		if err != nil {
 			log.Error().Err(err).Msg("send http msg fail")
 			return
