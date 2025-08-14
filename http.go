@@ -6,6 +6,7 @@
 package main
 
 import (
+	"context"
 	"crypto/tls"
 	"encoding/binary"
 	"fmt"
@@ -19,10 +20,11 @@ import (
 )
 
 type RttyHttpConn struct {
-	active  atomic.Int64
-	conn    net.Conn
-	data    chan *bytebufferpool.ByteBuffer
-	closeCh chan struct{}
+	active atomic.Int64
+	conn   net.Conn
+	data   chan *bytebufferpool.ByteBuffer
+	ctx    context.Context
+	cancel context.CancelFunc
 }
 
 var httpBufPool = sync.Pool{
@@ -55,9 +57,10 @@ func handleHttpMsg(cli *RttyClient, data []byte) error {
 	data = data[6:]
 
 	conn := &RttyHttpConn{
-		closeCh: make(chan struct{}),
-		data:    make(chan *bytebufferpool.ByteBuffer, 100),
+		data: make(chan *bytebufferpool.ByteBuffer, 100),
 	}
+
+	conn.ctx, conn.cancel = context.WithCancel(context.Background())
 
 	bb := bytebufferpool.Get()
 	bb.Write(data)
@@ -100,8 +103,7 @@ func (c *RttyHttpConn) run(cli *RttyClient, isHttps bool, saddr [18]byte, daddr 
 
 	defer func() {
 		cli.httpCons.Delete(saddr)
-		close(c.closeCh)
-		conn.Close()
+		c.cancel()
 	}()
 
 	go c.loop()
@@ -132,6 +134,7 @@ func (c *RttyHttpConn) loop() {
 	tick := time.NewTicker(5 * time.Second)
 	defer func() {
 		tick.Stop()
+		c.conn.Close()
 
 		for bb := range c.data {
 			bytebufferpool.Put(bb)
@@ -144,15 +147,13 @@ func (c *RttyHttpConn) loop() {
 			_, err := c.Write(bb.B)
 			bytebufferpool.Put(bb)
 			if err != nil {
-				c.conn.Close()
 				return
 			}
 		case <-tick.C:
 			if time.Now().Unix() > c.active.Load() {
-				c.conn.Close()
 				return
 			}
-		case <-c.closeCh:
+		case <-c.ctx.Done():
 			return
 		}
 	}
