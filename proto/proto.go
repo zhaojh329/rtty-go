@@ -70,7 +70,7 @@ var minimumMsgLensRtty = map[byte]int{
 	MsgTypeWinsize:  36,
 	MsgTypeFile:     33,
 	MsgTypeAck:      34,
-	MsgTypeHttp:     26,
+	MsgTypeHttp:     25,
 }
 
 var minimumMsgLensRttys = map[byte]int{

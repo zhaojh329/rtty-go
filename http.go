@@ -62,18 +62,27 @@ func handleHttpMsg(cli *RttyClient, data []byte) error {
 
 	conn.ctx, conn.cancel = context.WithCancel(context.Background())
 
-	bb := bytebufferpool.Get()
-	bb.Write(data)
+	var bb *bytebufferpool.ByteBuffer
+
+	if len(data) > 0 {
+		bb = bytebufferpool.Get()
+		bb.Write(data)
+	}
 
 	if v, loaded := cli.httpCons.LoadOrStore(saddr, conn); loaded {
 		conn := v.(*RttyHttpConn)
+		if bb == nil {
+			conn.cancel()
+			return nil
+		}
 		conn.data <- bb
 		return nil
 	}
 
-	conn.data <- bb
-
-	go conn.run(cli, isHttps, saddr, daddr, dport)
+	if bb != nil {
+		conn.data <- bb
+		go conn.run(cli, isHttps, saddr, daddr, dport)
+	}
 
 	return nil
 }
@@ -84,13 +93,18 @@ func (c *RttyHttpConn) run(cli *RttyClient, isHttps bool, saddr [18]byte, daddr 
 
 	addr := net.JoinHostPort(daddr, fmt.Sprintf("%d", dport))
 
+	dialer := &net.Dialer{
+		Timeout: 3 * time.Second,
+	}
+
 	if isHttps {
-		dialer := &net.Dialer{
-			Timeout: 3 * time.Second,
+		dialer := &tls.Dialer{
+			NetDialer: dialer,
+			Config:    &tls.Config{InsecureSkipVerify: true},
 		}
-		conn, err = tls.DialWithDialer(dialer, "tcp", addr, &tls.Config{InsecureSkipVerify: true})
+		conn, err = dialer.DialContext(c.ctx, "tcp", addr)
 	} else {
-		conn, err = net.DialTimeout("tcp", addr, 3*time.Second)
+		conn, err = dialer.DialContext(c.ctx, "tcp", addr)
 	}
 
 	if err != nil {
