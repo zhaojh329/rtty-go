@@ -221,6 +221,7 @@ func (cli *RttyClient) Register() error {
 
 func (cli *RttyClient) Close() {
 	cli.mu.Lock()
+	cli.waitingHeartbeat = false
 	if cli.heartbeatTimer != nil {
 		cli.heartbeatTimer.Stop()
 		cli.heartbeatTimer = nil
