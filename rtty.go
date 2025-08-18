@@ -246,7 +246,9 @@ func (cli *RttyClient) Close() {
 
 	cli.httpCons.Range(func(key, value any) bool {
 		con := value.(*RttyHttpConn)
-		con.conn.Close()
+		if con.conn != nil {
+			con.conn.Close()
+		}
 		return true
 	})
 }
