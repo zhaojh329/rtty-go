@@ -33,6 +33,18 @@ type Config struct {
 	sslcert  string
 	sslkey   string
 	insecure bool
+
+	KCP            bool
+	KcpNodelay     bool
+	KcpInterval    int
+	KcpResend      int
+	KcpNc          bool
+	KcpSndwnd      int
+	KcpRcvwnd      int
+	KcpMtu         int
+	KcpPassword    string
+	KcpDataShard   int
+	KcpParityShard int
 }
 
 func (cfg *Config) Parse(c *cli.Command) error {
@@ -62,6 +74,18 @@ func (cfg *Config) Parse(c *cli.Command) error {
 		"cert":        &cfg.sslcert,
 		"key":         &cfg.sslkey,
 		"insecure":    &cfg.insecure,
+
+		"kcp":              &cfg.KCP,
+		"kcp-nodelay":      &cfg.KcpNodelay,
+		"kcp-interval":     &cfg.KcpInterval,
+		"kcp-resend":       &cfg.KcpResend,
+		"kcp-nc":           &cfg.KcpNc,
+		"kcp-sndwnd":       &cfg.KcpSndwnd,
+		"kcp-rcvwnd":       &cfg.KcpRcvwnd,
+		"kcp-mtu":          &cfg.KcpMtu,
+		"kcp-key":          &cfg.KcpPassword,
+		"kcp-data-shard":   &cfg.KcpDataShard,
+		"kcp-parity-shard": &cfg.KcpParityShard,
 	}
 
 	for name, opt := range fields {

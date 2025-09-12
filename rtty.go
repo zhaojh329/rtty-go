@@ -6,6 +6,8 @@
 package main
 
 import (
+	"crypto/pbkdf2"
+	"crypto/sha256"
 	"crypto/tls"
 	"crypto/x509"
 	"encoding/binary"
@@ -20,6 +22,7 @@ import (
 	"github.com/rs/zerolog/log"
 	"github.com/shirou/gopsutil/v3/host"
 	"github.com/valyala/bytebufferpool"
+	"github.com/xtaci/kcp-go/v5"
 	"github.com/zhaojh329/rtty-go/proto"
 )
 
@@ -138,7 +141,43 @@ func (cli *RttyClient) Connect() error {
 
 	addr := net.JoinHostPort(cfg.host, fmt.Sprintf("%d", cfg.port))
 
-	if cfg.ssl {
+	if cfg.KCP {
+		var block kcp.BlockCrypt
+
+		if cfg.KcpPassword != "" {
+			key, err := pbkdf2.Key(sha256.New, cfg.KcpPassword, nil, 1024, 32)
+			if err != nil {
+				log.Fatal().Msg(err.Error())
+			}
+
+			block, err = kcp.NewAESBlockCrypt(key)
+			if err != nil {
+				log.Fatal().Msg(err.Error())
+			}
+		}
+
+		conn, err = kcp.DialWithOptions(addr, block, cfg.KcpDataShard, cfg.KcpParityShard)
+		if err != nil {
+			return fmt.Errorf("failed to connect to %s: %w", addr, err)
+		}
+
+		s := conn.(*kcp.UDPSession)
+
+		nodelay := 0
+		nc := 0
+
+		if cfg.KcpNodelay {
+			nodelay = 1
+		}
+
+		if cfg.KcpNc {
+			nc = 1
+		}
+
+		s.SetNoDelay(nodelay, cfg.KcpInterval, cfg.KcpResend, nc)
+		s.SetWindowSize(cfg.KcpSndwnd, cfg.KcpRcvwnd)
+		s.SetMtu(cfg.KcpMtu)
+	} else if cfg.ssl {
 		dialer := &net.Dialer{
 			Timeout: 5 * time.Second,
 		}
