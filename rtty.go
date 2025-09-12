@@ -132,22 +132,23 @@ func (cli *RttyClient) Run() {
 }
 
 func (cli *RttyClient) Connect() error {
+	cfg := cli.cfg
 	var conn net.Conn
 	var err error
 
-	addr := net.JoinHostPort(cli.cfg.host, fmt.Sprintf("%d", cli.cfg.port))
+	addr := net.JoinHostPort(cfg.host, fmt.Sprintf("%d", cfg.port))
 
-	if cli.cfg.ssl {
+	if cfg.ssl {
 		dialer := &net.Dialer{
 			Timeout: 5 * time.Second,
 		}
 
 		tlsConfig := &tls.Config{
-			InsecureSkipVerify: cli.cfg.insecure,
+			InsecureSkipVerify: cfg.insecure,
 		}
 
-		if cli.cfg.cacert != "" {
-			caCert, err := os.ReadFile(cli.cfg.cacert)
+		if cfg.cacert != "" {
+			caCert, err := os.ReadFile(cfg.cacert)
 			if err != nil {
 				return fmt.Errorf("load cacert fail: %w", err)
 			}
@@ -159,8 +160,8 @@ func (cli *RttyClient) Connect() error {
 
 		}
 
-		if cli.cfg.sslcert != "" && cli.cfg.sslkey != "" {
-			cert, err := tls.LoadX509KeyPair(cli.cfg.sslcert, cli.cfg.sslkey)
+		if cfg.sslcert != "" && cfg.sslkey != "" {
+			cert, err := tls.LoadX509KeyPair(cfg.sslcert, cfg.sslkey)
 			if err != nil {
 				return fmt.Errorf("load cert and key fail: %w", err)
 			}
@@ -180,7 +181,7 @@ func (cli *RttyClient) Connect() error {
 	cli.msg = proto.NewMsgReaderWriter(proto.RoleRtty, conn)
 	cli.conn = conn
 
-	log.Info().Msgf("Connected to %s:%d", cli.cfg.host, cli.cfg.port)
+	log.Info().Msgf("Connected to %s:%d", cfg.host, cfg.port)
 
 	return nil
 }
