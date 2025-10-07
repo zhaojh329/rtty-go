@@ -21,6 +21,6 @@
 [![Go Report Card][10]][11]
 ![Downloads][12]
 
-**Official Website:** https://rttys.net/
-
 This is a Go language rewrite of the original C-based [rtty](https://github.com/zhaojh329/rtty) remote terminal client.
+
+## ❤️ [Donation](https://zhaojh329.github.io/zhaojh329/)
