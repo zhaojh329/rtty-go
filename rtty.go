@@ -306,6 +306,7 @@ func handleLoginMsg(cli *RttyClient, data []byte) error {
 
 	var retCode byte
 
+	cli.mu.Lock()
 	if cli.ntty == rttyTermLimit {
 		log.Error().Msgf("maximum number of TTYs reached: %d", cli.ntty)
 		retCode = 1
@@ -332,6 +333,7 @@ func handleLoginMsg(cli *RttyClient, data []byte) error {
 			go s.Run(cli)
 		}
 	}
+	cli.mu.Unlock()
 
 	cli.WriteMsg(proto.MsgTypeLogin, sid, retCode)
 
@@ -345,15 +347,15 @@ func handleLogoutMsg(cli *RttyClient, data []byte) error {
 		log.Info().Msgf("delete tty %s", sid)
 		s := val.(*TermSession)
 
+		s.term.Close()
+
 		s.mu.Lock()
 		if s.timer != nil {
 			s.timer.Stop()
 			s.timer = nil
 		}
-		s.mu.Unlock()
-
-		s.term.Close()
 		cli.ntty--
+		s.mu.Unlock()
 	} else {
 		log.Error().Msgf("tty session %s not found", sid)
 		return nil
@@ -466,18 +468,17 @@ func (s *TermSession) close(cli *RttyClient) {
 		return
 	}
 
+	cli.WriteMsg(proto.MsgTypeLogout, s.sid)
+
+	s.term.Close()
+
 	s.mu.Lock()
 	if s.timer != nil {
 		s.timer.Stop()
 		s.timer = nil
 	}
-	s.mu.Unlock()
-
-	cli.WriteMsg(proto.MsgTypeLogout, s.sid)
-
-	s.term.Close()
-
 	cli.ntty--
+	s.mu.Unlock()
 
 	log.Info().Msgf("delete tty %s", s.sid)
 }
