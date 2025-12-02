@@ -89,6 +89,9 @@ func (t *Terminal) Close() error {
 		t.cmd.Process.Kill()
 	}
 
+	t.wait_ack.Store(0)
+	t.cond.Signal()
+
 	if t.pty != nil {
 		return t.pty.Close()
 	}

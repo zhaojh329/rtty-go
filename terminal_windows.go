@@ -59,6 +59,8 @@ func (t *Terminal) SetWinSize(cols, rows uint16) error {
 
 func (t *Terminal) Close() error {
 	t.closeOnce.Do(func() {
+		t.wait_ack.Store(0)
+		t.cond.Signal()
 		t.pty.Close()
 	})
 	return nil
