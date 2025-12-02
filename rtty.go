@@ -58,16 +58,21 @@ var msgHandlers = map[byte]func(*RttyClient, []byte) error{
 }
 
 func (cli *RttyClient) Run() {
-	defer func() {
-		cli.Close()
+	for {
+		cli.run()
 
-		if cli.cfg.reconnect {
-			delay := rand.IntN(10) + 5
-			log.Error().Msgf("Reconnecting in %d seconds...", delay)
-			time.Sleep(time.Duration(delay) * time.Second)
-			cli.Run()
+		if !cli.cfg.reconnect {
+			break
 		}
-	}()
+
+		delay := rand.IntN(10) + 5
+		log.Error().Msgf("Reconnecting in %d seconds...", delay)
+		time.Sleep(time.Duration(delay) * time.Second)
+	}
+}
+
+func (cli *RttyClient) run() {
+	defer cli.Close()
 
 	err := cli.Connect()
 	if err != nil {
