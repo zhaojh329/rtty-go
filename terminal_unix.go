@@ -87,6 +87,7 @@ func (t *Terminal) SetWinSize(cols, rows uint16) error {
 func (t *Terminal) Close() error {
 	if t.cmd.Process != nil {
 		t.cmd.Process.Kill()
+		t.cmd.Process.Wait()
 	}
 
 	t.wait_ack.Store(0)
