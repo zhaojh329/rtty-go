@@ -10,10 +10,12 @@ package main
 
 import (
 	"context"
+	"os"
 	"sync"
 	"sync/atomic"
 
 	conpty "github.com/qsocket/conpty-go"
+	"github.com/rs/zerolog/log"
 )
 
 type Terminal struct {
@@ -25,7 +27,16 @@ type Terminal struct {
 }
 
 func NewTerminal(username string) (*Terminal, error) {
-	pty, err := conpty.Start("cmd.exe")
+	// 使用 COMSPEC 环境变量定位系统 shell，提供更好的兼容性
+	shell := os.Getenv("COMSPEC")
+	if shell == "" {
+		shell = "C:\\Windows\\System32\\cmd.exe"
+	}
+
+	// /D - 禁止执行 AutoRun 命令（跳过注册表中的启动脚本）
+	// /Q - 安静模式，关闭回显
+	// 这些参数可以加快启动速度并避免意外配置导致的问题
+	pty, err := conpty.Start(shell + " /D /Q")
 	if err != nil {
 		return nil, err
 	}
@@ -37,7 +48,8 @@ func NewTerminal(username string) (*Terminal, error) {
 	}
 
 	go func() {
-		pty.Wait(context.Background())
+		code, err := pty.Wait(context.Background())
+		log.Info().Msgf("ConPTY child exited: code=%d err=%v", code, err)
 		t.Close()
 	}()
 
