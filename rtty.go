@@ -349,7 +349,7 @@ func handleLogoutMsg(cli *RttyClient, data []byte) error {
 	sid := string(data)
 
 	if val, loaded := cli.sessions.LoadAndDelete(sid); loaded {
-		log.Info().Msgf("delete tty %s", sid)
+		log.Info().Msgf("delete tty %s (reason=remote_logout)", sid)
 		s := val.(*TermSession)
 
 		s.term.Close()
@@ -485,7 +485,7 @@ func (s *TermSession) close(cli *RttyClient) {
 	cli.ntty--
 	s.mu.Unlock()
 
-	log.Info().Msgf("delete tty %s", s.sid)
+	log.Info().Msgf("delete tty %s (reason=local_io_eof)", s.sid)
 }
 
 func putMsgAttr(bb *bytebufferpool.ByteBuffer, attrType byte, val any) {
