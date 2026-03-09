@@ -10,10 +10,12 @@ package main
 
 import (
 	"context"
+	"os"
 	"sync"
 	"sync/atomic"
 
-	conpty "github.com/qsocket/conpty-go"
+	conpty "github.com/UserExistsError/conpty"
+	"github.com/rs/zerolog/log"
 )
 
 type Terminal struct {
@@ -22,10 +24,16 @@ type Terminal struct {
 	cond      *sync.Cond
 	ack_block int32
 	closeOnce sync.Once
+	closed    bool
 }
 
 func NewTerminal(username string) (*Terminal, error) {
-	pty, err := conpty.Start("cmd.exe")
+	shell := os.Getenv("COMSPEC")
+	if shell == "" {
+		shell = "C:\\Windows\\System32\\cmd.exe"
+	}
+
+	pty, err := conpty.Start(shell + " /D /Q")
 	if err != nil {
 		return nil, err
 	}
@@ -34,10 +42,16 @@ func NewTerminal(username string) (*Terminal, error) {
 		pty:       pty,
 		ack_block: 4096,
 		cond:      sync.NewCond(&sync.Mutex{}),
+		closed:    false,
+	}
+
+	if err := pty.Resize(80, 24); err != nil {
+		log.Warn().Err(err).Msg("Failed to set initial window size")
 	}
 
 	go func() {
-		pty.Wait(context.Background())
+		code, werr := pty.Wait(context.Background())
+		log.Info().Msgf("ConPTY child exited: code=%d err=%v", code, werr)
 		t.Close()
 	}()
 
@@ -59,8 +73,9 @@ func (t *Terminal) SetWinSize(cols, rows uint16) error {
 
 func (t *Terminal) Close() error {
 	t.closeOnce.Do(func() {
+		t.closed = true
 		t.wait_ack.Store(0)
-		t.cond.Signal()
+		t.cond.Broadcast()
 		t.pty.Close()
 	})
 	return nil
@@ -72,11 +87,15 @@ func (t *Terminal) Ack(n uint16) {
 }
 
 func (t *Terminal) WaitAck(len int) {
+	if t.closed {
+		return
+	}
+
 	newWaitAck := t.wait_ack.Add(int32(len))
 
 	if newWaitAck > t.ack_block {
 		t.cond.L.Lock()
-		for t.wait_ack.Load() > t.ack_block {
+		for !t.closed && t.wait_ack.Load() > t.ack_block {
 			t.cond.Wait()
 		}
 		t.cond.L.Unlock()
