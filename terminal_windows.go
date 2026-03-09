@@ -13,7 +13,7 @@ import (
 	"sync"
 	"sync/atomic"
 
-	conpty "github.com/qsocket/conpty-go"
+	conpty "github.com/UserExistsError/conpty"
 )
 
 type Terminal struct {
@@ -37,7 +37,7 @@ func NewTerminal(username string) (*Terminal, error) {
 	}
 
 	go func() {
-		pty.Wait(context.Background())
+		_, _ = pty.Wait(context.Background())
 		t.Close()
 	}()
 
