@@ -24,7 +24,7 @@ type Terminal struct {
 	cond      *sync.Cond
 	ack_block int32
 	closeOnce sync.Once
-	closed    bool
+	closed    atomic.Bool
 }
 
 func NewTerminal(username string) (*Terminal, error) {
@@ -42,7 +42,7 @@ func NewTerminal(username string) (*Terminal, error) {
 		pty:       pty,
 		ack_block: 4096,
 		cond:      sync.NewCond(&sync.Mutex{}),
-		closed:    false,
+		closed:    atomic.Bool{},
 	}
 
 	if err := pty.Resize(80, 24); err != nil {
@@ -73,7 +73,7 @@ func (t *Terminal) SetWinSize(cols, rows uint16) error {
 
 func (t *Terminal) Close() error {
 	t.closeOnce.Do(func() {
-		t.closed = true
+		t.closed.Store(true)
 		t.wait_ack.Store(0)
 		t.cond.Broadcast()
 		t.pty.Close()
@@ -87,7 +87,7 @@ func (t *Terminal) Ack(n uint16) {
 }
 
 func (t *Terminal) WaitAck(len int) {
-	if t.closed {
+	if t.closed.Load() {
 		return
 	}
 
@@ -95,7 +95,7 @@ func (t *Terminal) WaitAck(len int) {
 
 	if newWaitAck > t.ack_block {
 		t.cond.L.Lock()
-		for !t.closed && t.wait_ack.Load() > t.ack_block {
+		for !t.closed.Load() && t.wait_ack.Load() > t.ack_block {
 			t.cond.Wait()
 		}
 		t.cond.L.Unlock()
