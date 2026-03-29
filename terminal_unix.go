@@ -9,6 +9,7 @@
 package main
 
 import (
+	"fmt"
 	"os"
 	"os/exec"
 	"sync"
@@ -34,12 +35,32 @@ type winsize struct {
 	Ypixel uint16
 }
 
+func resolveLoginPath() (string, error) {
+	if p, err := exec.LookPath("login"); err == nil {
+		return p, nil
+	}
+
+	fallbacks := []string{"/bin/login", "/usr/bin/login"}
+	for _, p := range fallbacks {
+		if st, err := os.Stat(p); err == nil && !st.IsDir() {
+			return p, nil
+		}
+	}
+
+	return "", fmt.Errorf("login executable not found")
+}
+
 func NewTerminal(username string) (*Terminal, error) {
+	loginPath, err := resolveLoginPath()
+	if err != nil {
+		return nil, err
+	}
+
 	var cmd *exec.Cmd
 	if username != "" {
-		cmd = exec.Command("/bin/login", "-f", username)
+		cmd = exec.Command(loginPath, "-f", username)
 	} else {
-		cmd = exec.Command("/bin/login")
+		cmd = exec.Command(loginPath)
 	}
 
 	ptmx, err := pty.Start(cmd)
