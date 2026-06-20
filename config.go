@@ -27,6 +27,7 @@ type Config struct {
 	heartbeat   uint8
 	username    string
 	reconnect   bool
+	peer        bool
 
 	ssl      bool
 	cacert   string
@@ -57,6 +58,7 @@ func (cfg *Config) Parse(c *cli.Command) error {
 		"heartbeat":   &cfg.heartbeat,
 		"username":    &cfg.username,
 		"reconnect":   &cfg.reconnect,
+		"peer":        &cfg.peer,
 		"ssl":         &cfg.ssl,
 		"cacert":      &cfg.cacert,
 		"cert":        &cfg.sslcert,

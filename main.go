@@ -77,6 +77,10 @@ func main() {
 				Usage:   "Add a description to the device(Maximum 126 bytes)",
 			},
 			&cli.BoolFlag{
+				Name:  "peer",
+				Usage: "Advertise experimental peer signaling capability",
+			},
+			&cli.BoolFlag{
 				Name:    "reconnect",
 				Aliases: []string{"a"},
 				Usage:   "Auto reconnect to the server",
@@ -213,6 +217,7 @@ func cmdAction(c context.Context, cmd *cli.Command) error {
 	log.Debug().Msgf("%+v", cfg)
 
 	rtty := &RttyClient{cfg: cfg}
+	rtty.dataTransport = newRelayDataTransport(rtty)
 
 	rtty.Run()
 

@@ -33,6 +33,7 @@ const (
 	MsgTypeFile
 	MsgTypeHttp
 	MsgTypeAck
+	MsgTypePeerSignal
 )
 
 const (
@@ -41,6 +42,24 @@ const (
 	MsgRegAttrDescription
 	MsgRegAttrToken
 	MsgRegAttrGroup
+	MsgRegAttrCapabilities
+)
+
+const (
+	PeerCapabilitySignal = uint32(1 << iota)
+	PeerCapabilityTerminal
+	PeerCapabilityHTTP
+	PeerCapabilityFile
+	PeerCapabilityCommand
+)
+
+const (
+	PeerSignalOffer = byte(iota)
+	PeerSignalAnswer
+	PeerSignalCandidate
+	PeerSignalReady
+	PeerSignalFailed
+	PeerSignalFallbackRelay
 )
 
 const (
@@ -63,23 +82,25 @@ const (
 )
 
 var minimumMsgLensRtty = map[byte]int{
-	MsgTypeRegister: 1,
-	MsgTypeLogin:    32,
-	MsgTypeLogout:   32,
-	MsgTypeTermData: 33,
-	MsgTypeWinsize:  36,
-	MsgTypeFile:     33,
-	MsgTypeAck:      34,
-	MsgTypeHttp:     25,
+	MsgTypeRegister:   1,
+	MsgTypeLogin:      32,
+	MsgTypeLogout:     32,
+	MsgTypeTermData:   33,
+	MsgTypeWinsize:    36,
+	MsgTypeFile:       33,
+	MsgTypeAck:        34,
+	MsgTypeHttp:       25,
+	MsgTypePeerSignal: 33,
 }
 
 var minimumMsgLensRttys = map[byte]int{
-	MsgTypeRegister: 1,
-	MsgTypeLogin:    33,
-	MsgTypeLogout:   32,
-	MsgTypeTermData: 33,
-	MsgTypeFile:     33,
-	MsgTypeHttp:     18,
+	MsgTypeRegister:   1,
+	MsgTypeLogin:      33,
+	MsgTypeLogout:     32,
+	MsgTypeTermData:   33,
+	MsgTypeFile:       33,
+	MsgTypeHttp:       18,
+	MsgTypePeerSignal: 33,
 }
 
 func MsgTypeName(typ byte) string {
@@ -104,6 +125,8 @@ func MsgTypeName(typ byte) string {
 		return "http"
 	case MsgTypeAck:
 		return "ack"
+	case MsgTypePeerSignal:
+		return "peersignal"
 	default:
 		return fmt.Sprintf("unknown(%d)", typ)
 	}

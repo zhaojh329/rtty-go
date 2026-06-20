@@ -42,19 +42,22 @@ type RttyClient struct {
 	waitingHeartbeat bool
 	mu               sync.Mutex
 
-	msg *proto.MsgReaderWriter
+	msg           *proto.MsgReaderWriter
+	dataTransport DataPlaneTransport
+	peerManager   *PeerSessionManager
 }
 
 var msgHandlers = map[byte]func(*RttyClient, []byte) error{
-	proto.MsgTypeHeartbeat: handleHeartbeatMsg,
-	proto.MsgTypeLogin:     handleLoginMsg,
-	proto.MsgTypeLogout:    handleLogoutMsg,
-	proto.MsgTypeTermData:  handleTermDataMsg,
-	proto.MsgTypeWinsize:   handleTermWinsizeMsg,
-	proto.MsgTypeAck:       handleAckMsg,
-	proto.MsgTypeFile:      handleFileMsg,
-	proto.MsgTypeCmd:       handleCmdMsg,
-	proto.MsgTypeHttp:      handleHttpMsg,
+	proto.MsgTypeHeartbeat:  handleHeartbeatMsg,
+	proto.MsgTypeLogin:      handleLoginMsg,
+	proto.MsgTypeLogout:     handleLogoutMsg,
+	proto.MsgTypeTermData:   handleTermDataMsg,
+	proto.MsgTypeWinsize:    handleTermWinsizeMsg,
+	proto.MsgTypeAck:        handleAckMsg,
+	proto.MsgTypeFile:       handleFileMsg,
+	proto.MsgTypeCmd:        handleCmdMsg,
+	proto.MsgTypeHttp:       handleHttpMsg,
+	proto.MsgTypePeerSignal: handlePeerSignalMsg,
 }
 
 func (cli *RttyClient) Run() {
@@ -222,6 +225,10 @@ func (cli *RttyClient) Register() error {
 		putMsgAttr(bb, proto.MsgRegAttrToken, cfg.token)
 	}
 
+	if capabilities := cli.peerCapabilities(); capabilities != 0 {
+		putMsgAttr(bb, proto.MsgRegAttrCapabilities, capabilities)
+	}
+
 	return cli.WriteMsg(proto.MsgTypeRegister, bb)
 }
 
@@ -233,6 +240,10 @@ func (cli *RttyClient) Close() {
 		cli.heartbeatTimer = nil
 	}
 	cli.mu.Unlock()
+
+	if cli.peerManager != nil {
+		cli.peerManager.Close()
+	}
 
 	cli.sessions.Range(func(key, value any) bool {
 		s := value.(*TermSession)
@@ -294,11 +305,43 @@ func (cli *RttyClient) startHeartbeat() {
 }
 
 func (cli *RttyClient) SendFileMsg(sid string, typ byte, data []byte) error {
-	return cli.WriteMsg(proto.MsgTypeFile, sid, typ, data)
+	return cli.dataPlane().SendFile(sid, typ, data)
 }
 
 func (cli *RttyClient) SendHttpMsg(saddr [18]byte, data []byte) error {
-	return cli.WriteMsg(proto.MsgTypeHttp, saddr[:], data)
+	return cli.dataPlane().SendHTTP(saddr, data)
+}
+
+func handlePeerSignalMsg(cli *RttyClient, data []byte) error {
+	return cli.peerSignals().Handle(data)
+}
+
+func (cli *RttyClient) peerCapabilities() uint32 {
+	if !cli.cfg.peer {
+		return 0
+	}
+
+	return proto.PeerCapabilitySignal
+}
+
+func (cli *RttyClient) dataPlane() DataPlaneTransport {
+	if cli.dataTransport == nil {
+		cli.dataTransport = newRelayDataTransport(cli)
+	}
+
+	return cli.dataTransport
+}
+
+func (cli *RttyClient) peerSignals() *PeerSessionManager {
+	if cli.peerManager == nil {
+		cli.peerManager = newPeerSessionManager(cli)
+	}
+
+	return cli.peerManager
+}
+
+func (cli *RttyClient) SendPeerSignal(sid string, signalType byte, payload []byte) error {
+	return cli.WriteMsg(proto.MsgTypePeerSignal, sid, signalType, payload)
 }
 
 func handleHeartbeatMsg(cli *RttyClient, data []byte) error {
@@ -347,6 +390,7 @@ func handleLoginMsg(cli *RttyClient, data []byte) error {
 
 func handleLogoutMsg(cli *RttyClient, data []byte) error {
 	sid := string(data)
+	cli.peerSignals().Delete(sid)
 
 	if val, loaded := cli.sessions.LoadAndDelete(sid); loaded {
 		log.Info().Msgf("delete tty %s", sid)
@@ -440,9 +484,14 @@ func (s *TermSession) Write(buf []byte) (int, error) {
 		return length, nil
 	}
 
-	s.cli.WriteMsg(proto.MsgTypeTermData, s.sid, buf)
+	ackRequired, err := s.cli.dataPlane().SendTermData(s.sid, buf)
+	if err != nil {
+		return 0, err
+	}
 
-	s.term.WaitAck(length)
+	if ackRequired {
+		s.term.WaitAck(length)
+	}
 
 	return length, nil
 }
