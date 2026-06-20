@@ -455,7 +455,9 @@ func (s *TermSession) Run(cli *RttyClient) {
 	})
 	s.mu.Unlock()
 
-	io.Copy(s, s.term)
+	if _, err := io.Copy(s, s.term); err != nil {
+		log.Error().Err(err).Msgf("error while copying terminal data for %s", s.sid)
+	}
 	s.close(cli)
 }
 

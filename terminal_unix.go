@@ -9,12 +9,15 @@
 package main
 
 import (
+	"errors"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"sync"
 	"sync/atomic"
 	"syscall"
+	"time"
 	"unsafe"
 
 	"github.com/creack/pty"
@@ -26,6 +29,9 @@ type Terminal struct {
 	wait_ack  atomic.Int32
 	cond      *sync.Cond
 	ack_block int32
+	closeOnce sync.Once
+	closed    atomic.Bool
+	waitDone  chan struct{}
 }
 
 type winsize struct {
@@ -73,13 +79,49 @@ func NewTerminal(username string) (*Terminal, error) {
 		cmd:       cmd,
 		ack_block: 4096,
 		cond:      sync.NewCond(&sync.Mutex{}),
+		waitDone:  make(chan struct{}),
 	}
+
+	go func() {
+		_ = cmd.Wait()
+		close(t.waitDone)
+	}()
 
 	return t, nil
 }
 
 func (t *Terminal) Read(buf []byte) (int, error) {
-	return t.pty.Read(buf)
+	for {
+		n, err := t.pty.Read(buf)
+		if n > 0 {
+			return n, nil
+		}
+
+		if err == nil {
+			if t.isClosed() || t.childExited() {
+				return 0, io.EOF
+			}
+
+			time.Sleep(10 * time.Millisecond)
+			continue
+		}
+
+		if errors.Is(err, syscall.EINTR) {
+			continue
+		}
+
+		if t.isClosed() || t.childExited() {
+			return 0, io.EOF
+		}
+
+		// util-linux login briefly drops the PTY slave while reattaching the session.
+		if errors.Is(err, syscall.EIO) || errors.Is(err, io.EOF) {
+			time.Sleep(10 * time.Millisecond)
+			continue
+		}
+
+		return 0, err
+	}
 }
 
 func (t *Terminal) Write(data []byte) (int, error) {
@@ -106,17 +148,21 @@ func (t *Terminal) SetWinSize(cols, rows uint16) error {
 }
 
 func (t *Terminal) Close() error {
-	if t.cmd.Process != nil {
-		t.cmd.Process.Kill()
-		t.cmd.Process.Wait()
-	}
+	t.closeOnce.Do(func() {
+		t.closed.Store(true)
+		t.wait_ack.Store(0)
+		t.cond.Signal()
 
-	t.wait_ack.Store(0)
-	t.cond.Signal()
+		if t.pty != nil {
+			_ = t.pty.Close()
+		}
 
-	if t.pty != nil {
-		return t.pty.Close()
-	}
+		if t.cmd.Process != nil {
+			_ = t.cmd.Process.Kill()
+		}
+
+		<-t.waitDone
+	})
 
 	return nil
 }
@@ -136,4 +182,17 @@ func (t *Terminal) WaitAck(len int) {
 		}
 		t.cond.L.Unlock()
 	}
+}
+
+func (t *Terminal) childExited() bool {
+	select {
+	case <-t.waitDone:
+		return true
+	default:
+		return false
+	}
+}
+
+func (t *Terminal) isClosed() bool {
+	return t.closed.Load()
 }
