@@ -18,6 +18,30 @@ func TestMain(m *testing.M) {
 	os.Exit(m.Run())
 }
 
+func TestCloseDoesNotPanicOnPartialSessions(t *testing.T) {
+	cli := &RttyClient{}
+	cli.httpCons.Store([18]byte{1}, (*RttyHttpConn)(nil))
+	cli.httpCons.Store([18]byte{2}, &RttyHttpConn{})
+	cli.httpCons.Store([18]byte{3}, newRttyHttpConn())
+	cli.sessions.Store("nil-session", (*TermSession)(nil))
+	cli.sessions.Store("empty-session", &TermSession{})
+
+	cli.Close()
+
+	found := false
+	cli.httpCons.Range(func(k, v any) bool {
+		found = true
+		return false
+	})
+	cli.sessions.Range(func(k, v any) bool {
+		found = true
+		return false
+	})
+	if found {
+		t.Fatal("Close left leftover sessions or http connections")
+	}
+}
+
 func TestCloseUnblocksReadMsg(t *testing.T) {
 	c1, c2 := net.Pipe()
 	defer c2.Close()

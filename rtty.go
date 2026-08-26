@@ -243,6 +243,12 @@ func (cli *RttyClient) Register() error {
 }
 
 func (cli *RttyClient) Close() {
+	defer func() {
+		if rec := recover(); rec != nil {
+			log.Error().Interface("panic", rec).Msg("close panicked")
+		}
+	}()
+
 	cli.mu.Lock()
 	cli.waitingHeartbeat = false
 	cli.ntty = 0
@@ -258,26 +264,30 @@ func (cli *RttyClient) Close() {
 	}
 
 	cli.sessions.Range(func(key, value any) bool {
-		s := value.(*TermSession)
+		s, ok := value.(*TermSession)
+		if ok && s != nil {
+			s.mu.Lock()
+			if s.timer != nil {
+				s.timer.Stop()
+				s.timer = nil
+			}
+			s.mu.Unlock()
 
-		s.mu.Lock()
-		if s.timer != nil {
-			s.timer.Stop()
-			s.timer = nil
-		}
-		s.mu.Unlock()
-
-		s.term.Close()
-		if s.fc != nil {
-			s.fc.reset()
+			if s.term != nil {
+				s.term.Close()
+			}
+			if s.fc != nil {
+				s.fc.reset()
+			}
 		}
 		cli.sessions.Delete(key)
 		return true
 	})
 
 	cli.httpCons.Range(func(key, value any) bool {
-		con := value.(*RttyHttpConn)
-		con.closeLocal()
+		if con, ok := value.(*RttyHttpConn); ok {
+			con.closeLocal()
+		}
 		cli.httpCons.Delete(key)
 		return true
 	})

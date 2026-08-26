@@ -131,7 +131,12 @@ func (c *RttyHttpConn) enqueue(bb *bytebufferpool.ByteBuffer) bool {
 }
 
 func (c *RttyHttpConn) closeLocal() {
-	c.cancel()
+	if c == nil {
+		return
+	}
+	if cancel := c.cancel; cancel != nil {
+		cancel()
+	}
 	c.mu.Lock()
 	conn := c.conn
 	c.mu.Unlock()
