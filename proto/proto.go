@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"io"
 	"net"
+	"sync"
 
 	"github.com/valyala/bytebufferpool"
 )
@@ -131,6 +132,7 @@ type MsgReaderWriter struct {
 	br   *bufio.Reader
 	head [3]byte
 	buf  []byte
+	wmu  sync.Mutex
 }
 
 func (msg *MsgReaderWriter) Read() (byte, []byte, error) {
@@ -216,7 +218,9 @@ func (msg *MsgReaderWriter) Write(typ byte, data ...any) error {
 
 	binary.BigEndian.PutUint16(bb.B[1:], uint16(total))
 
+	msg.wmu.Lock()
 	_, err := bb.WriteTo(msg.conn)
+	msg.wmu.Unlock()
 
 	return err
 }

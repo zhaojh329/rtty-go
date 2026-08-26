@@ -18,7 +18,7 @@ import (
 	"github.com/urfave/cli/v3"
 )
 
-const RttyVersion = "1.1.1"
+const RttyVersion = "1.1.2"
 
 var (
 	GitCommit = ""
@@ -79,7 +79,7 @@ func main() {
 			&cli.BoolFlag{
 				Name:    "reconnect",
 				Aliases: []string{"a"},
-				Usage:   "Auto reconnect to the server",
+				Usage:   "Auto reconnect to the server (enabled by default)",
 			},
 			&cli.Uint8Flag{
 				Name:        "heartbeat",
@@ -169,6 +169,7 @@ func cmdAction(c context.Context, cmd *cli.Command) error {
 		host:      "localhost",
 		heartbeat: 30,
 		port:      5912,
+		reconnect: true,
 	}
 
 	err := cfg.Parse(cmd)
