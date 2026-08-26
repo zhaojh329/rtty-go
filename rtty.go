@@ -15,6 +15,7 @@ import (
 	"net"
 	"os"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/rs/zerolog/log"
@@ -42,7 +43,12 @@ type RttyClient struct {
 	waitingHeartbeat bool
 	mu               sync.Mutex
 
-	msg *proto.MsgReaderWriter
+	msg  *proto.MsgReaderWriter
+	stop atomic.Bool
+}
+
+var reconnectWait = func() time.Duration {
+	return time.Duration(rand.IntN(10)+5) * time.Second
 }
 
 var msgHandlers = map[byte]func(*RttyClient, []byte) error{
@@ -59,16 +65,25 @@ var msgHandlers = map[byte]func(*RttyClient, []byte) error{
 
 func (cli *RttyClient) Run() {
 	for {
+		if cli.stop.Load() {
+			return
+		}
+
 		cli.run()
 
-		if !cli.cfg.reconnect {
+		if cli.stop.Load() || !cli.cfg.reconnect {
 			break
 		}
 
-		delay := rand.IntN(10) + 5
-		log.Error().Msgf("Reconnecting in %d seconds...", delay)
-		time.Sleep(time.Duration(delay) * time.Second)
+		delay := reconnectWait()
+		log.Error().Msgf("Reconnecting in %v...", delay)
+		time.Sleep(delay)
 	}
+}
+
+func (cli *RttyClient) Stop() {
+	cli.stop.Store(true)
+	cli.Close()
 }
 
 func (cli *RttyClient) run() {
@@ -118,6 +133,10 @@ func (cli *RttyClient) run() {
 			return
 		}
 
+		cli.mu.Lock()
+		cli.waitingHeartbeat = false
+		cli.mu.Unlock()
+
 		log.Debug().Msgf("recv msg: %s", proto.MsgTypeName(typ))
 
 		handler, ok := msgHandlers[typ]
@@ -131,8 +150,6 @@ func (cli *RttyClient) run() {
 			log.Error().Err(err).Msgf("failed to handle message '%s'", proto.MsgTypeName(typ))
 			return
 		}
-
-		cli.waitingHeartbeat = false
 	}
 }
 
@@ -226,33 +243,52 @@ func (cli *RttyClient) Register() error {
 }
 
 func (cli *RttyClient) Close() {
+	defer func() {
+		if rec := recover(); rec != nil {
+			log.Error().Interface("panic", rec).Msg("close panicked")
+		}
+	}()
+
 	cli.mu.Lock()
 	cli.waitingHeartbeat = false
+	cli.ntty = 0
 	if cli.heartbeatTimer != nil {
 		cli.heartbeatTimer.Stop()
 		cli.heartbeatTimer = nil
 	}
+	conn := cli.conn
 	cli.mu.Unlock()
 
+	if conn != nil {
+		conn.Close()
+	}
+
 	cli.sessions.Range(func(key, value any) bool {
-		s := value.(*TermSession)
+		s, ok := value.(*TermSession)
+		if ok && s != nil {
+			s.mu.Lock()
+			if s.timer != nil {
+				s.timer.Stop()
+				s.timer = nil
+			}
+			s.mu.Unlock()
 
-		s.mu.Lock()
-		if s.timer != nil {
-			s.timer.Stop()
-			s.timer = nil
+			if s.term != nil {
+				s.term.Close()
+			}
+			if s.fc != nil {
+				s.fc.reset()
+			}
 		}
-		s.mu.Unlock()
-
-		s.term.Close()
-		s.fc.reset()
 		cli.sessions.Delete(key)
 		return true
 	})
 
 	cli.httpCons.Range(func(key, value any) bool {
-		con := value.(*RttyHttpConn)
-		con.cancel()
+		if con, ok := value.(*RttyHttpConn); ok {
+			con.closeLocal()
+		}
+		cli.httpCons.Delete(key)
 		return true
 	})
 }
@@ -262,35 +298,67 @@ func (cli *RttyClient) startHeartbeat() {
 	defer cli.mu.Unlock()
 
 	cli.lastHeartbeat = time.Time{}
+	cli.waitingHeartbeat = false
 
 	heartbeatInterval := time.Duration(cli.cfg.heartbeat) * time.Second
 
-	cli.heartbeatTimer = time.AfterFunc(heartbeatInterval, func() {
-		if cli.waitingHeartbeat {
-			log.Error().Msg("heartbeat timeout")
-			cli.conn.Close()
-			return
-		}
-
-		elapsed := time.Since(cli.lastHeartbeat)
-
-		if elapsed < heartbeatInterval {
-			cli.heartbeatTimer.Reset(heartbeatInterval - elapsed)
-		} else {
-			uptime, _ := host.Uptime()
-
-			bb := bytebufferpool.Get()
-			defer bytebufferpool.Put(bb)
-
-			putMsgAttr(bb, proto.MsgHeartbeatAttrUptime, uint32(uptime))
-			cli.WriteMsg(proto.MsgTypeHeartbeat, bb)
-
-			cli.lastHeartbeat = time.Now()
-			cli.waitingHeartbeat = true
-			cli.heartbeatTimer.Reset(rttyHeartbeatTimeout)
-			log.Debug().Msg("send msg: heartbeat")
-		}
+	var timer *time.Timer
+	timer = time.AfterFunc(heartbeatInterval, func() {
+		cli.onHeartbeatTimer(timer, heartbeatInterval)
 	})
+	cli.heartbeatTimer = timer
+}
+
+func (cli *RttyClient) onHeartbeatTimer(timer *time.Timer, heartbeatInterval time.Duration) {
+	cli.mu.Lock()
+	if cli.heartbeatTimer != timer {
+		cli.mu.Unlock()
+		return
+	}
+
+	if cli.waitingHeartbeat {
+		conn := cli.conn
+		cli.mu.Unlock()
+		log.Error().Msg("heartbeat timeout")
+		if conn != nil {
+			conn.Close()
+		}
+		return
+	}
+
+	elapsed := time.Since(cli.lastHeartbeat)
+	if elapsed < heartbeatInterval {
+		timer.Reset(heartbeatInterval - elapsed)
+		cli.mu.Unlock()
+		return
+	}
+	cli.mu.Unlock()
+
+	uptime, _ := host.Uptime()
+
+	bb := bytebufferpool.Get()
+	defer bytebufferpool.Put(bb)
+
+	putMsgAttr(bb, proto.MsgHeartbeatAttrUptime, uint32(uptime))
+	err := cli.WriteMsg(proto.MsgTypeHeartbeat, bb)
+
+	cli.mu.Lock()
+	defer cli.mu.Unlock()
+	if cli.heartbeatTimer != timer {
+		return
+	}
+	if err != nil {
+		log.Error().Err(err).Msg("send heartbeat fail")
+		if cli.conn != nil {
+			cli.conn.Close()
+		}
+		return
+	}
+
+	cli.lastHeartbeat = time.Now()
+	cli.waitingHeartbeat = true
+	timer.Reset(rttyHeartbeatTimeout)
+	log.Debug().Msg("send msg: heartbeat")
 }
 
 func (cli *RttyClient) SendFileMsg(sid string, typ byte, data []byte) error {
