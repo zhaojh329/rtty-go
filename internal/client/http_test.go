@@ -2,6 +2,7 @@ package client
 
 import (
 	"context"
+	"io"
 	"net"
 	"testing"
 	"time"
@@ -59,4 +60,29 @@ func TestHttpQueueUnblocksOnCancel(t *testing.T) {
 		t.Fatal("HTTP message remained blocked after cancellation")
 	}
 	bytebufferpool.Put(<-conn.data)
+}
+
+func TestHttpLoopClosesConnectionOnCancel(t *testing.T) {
+	clientConn, serverConn := net.Pipe()
+	defer serverConn.Close()
+
+	conn := &RttyHttpConn{conn: clientConn, data: make(chan *bytebufferpool.ByteBuffer, 1)}
+	conn.ctx, conn.cancel = context.WithCancel(context.Background())
+	conn.active.Store(time.Now().Add(time.Minute).Unix())
+
+	done := make(chan struct{})
+	go func() {
+		conn.loop()
+		close(done)
+	}()
+	conn.cancel()
+
+	select {
+	case <-done:
+	case <-time.After(time.Second):
+		t.Fatal("HTTP loop did not finish after cancellation")
+	}
+	if _, err := serverConn.Read(make([]byte, 1)); err != io.EOF {
+		t.Fatalf("HTTP connection remained open: %v", err)
+	}
 }

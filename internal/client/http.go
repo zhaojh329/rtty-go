@@ -114,9 +114,7 @@ func (c *RttyHttpConn) run(cli *RttyClient, isHttps bool, saddr [18]byte, daddr 
 	if err != nil {
 		c.cancel()
 		cli.httpCons.CompareAndDelete(saddr, c)
-		for len(c.data) > 0 {
-			bytebufferpool.Put(<-c.data)
-		}
+		c.drain()
 
 		log.Error().Err(err).Msg("Failed to connect to target address")
 		cli.SendHttpMsg(saddr, nil)
@@ -159,10 +157,7 @@ func (c *RttyHttpConn) loop() {
 	defer func() {
 		tick.Stop()
 		c.conn.Close()
-
-		for bb := range c.data {
-			bytebufferpool.Put(bb)
-		}
+		c.drain()
 	}()
 
 	for {
@@ -180,5 +175,11 @@ func (c *RttyHttpConn) loop() {
 		case <-c.ctx.Done():
 			return
 		}
+	}
+}
+
+func (c *RttyHttpConn) drain() {
+	for len(c.data) > 0 {
+		bytebufferpool.Put(<-c.data)
 	}
 }
