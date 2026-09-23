@@ -137,7 +137,9 @@ func (cli *RttyClient) run() {
 			return
 		}
 
+		cli.mu.Lock()
 		cli.waitingHeartbeat = false
+		cli.mu.Unlock()
 	}
 }
 
@@ -276,33 +278,52 @@ func (cli *RttyClient) startHeartbeat() {
 	cli.lastHeartbeat = time.Time{}
 
 	heartbeatInterval := time.Duration(cli.cfg.Heartbeat) * time.Second
+	conn := cli.conn
 
-	cli.heartbeatTimer = time.AfterFunc(heartbeatInterval, func() {
+	var timer *time.Timer
+	timer = time.AfterFunc(heartbeatInterval, func() {
+		cli.mu.Lock()
+		if cli.heartbeatTimer != timer {
+			cli.mu.Unlock()
+			return
+		}
+
 		if cli.waitingHeartbeat {
+			cli.mu.Unlock()
 			log.Error().Msg("heartbeat timeout")
-			cli.conn.Close()
+			conn.Close()
 			return
 		}
 
 		elapsed := time.Since(cli.lastHeartbeat)
 
 		if elapsed < heartbeatInterval {
-			cli.heartbeatTimer.Reset(heartbeatInterval - elapsed)
-		} else {
-			uptime, _ := host.Uptime()
-
-			bb := bytebufferpool.Get()
-			defer bytebufferpool.Put(bb)
-
-			putMsgAttr(bb, proto.MsgHeartbeatAttrUptime, uint32(uptime))
-			cli.WriteMsg(proto.MsgTypeHeartbeat, bb)
-
-			cli.lastHeartbeat = time.Now()
-			cli.waitingHeartbeat = true
-			cli.heartbeatTimer.Reset(rttyHeartbeatTimeout)
-			log.Debug().Msg("send msg: heartbeat")
+			timer.Reset(heartbeatInterval - elapsed)
+			cli.mu.Unlock()
+			return
 		}
+		cli.mu.Unlock()
+
+		uptime, _ := host.Uptime()
+		bb := bytebufferpool.Get()
+		defer bytebufferpool.Put(bb)
+
+		putMsgAttr(bb, proto.MsgHeartbeatAttrUptime, uint32(uptime))
+
+		cli.mu.Lock()
+		if cli.heartbeatTimer != timer {
+			cli.mu.Unlock()
+			return
+		}
+		cli.lastHeartbeat = time.Now()
+		cli.waitingHeartbeat = true
+		timer.Reset(rttyHeartbeatTimeout)
+		cli.mu.Unlock()
+
+		cli.WriteMsg(proto.MsgTypeHeartbeat, bb)
+		log.Debug().Msg("send msg: heartbeat")
 	})
+	cli.heartbeatTimer = timer
 }
 
 func (cli *RttyClient) SendFileMsg(sid string, typ byte, data []byte) error {
