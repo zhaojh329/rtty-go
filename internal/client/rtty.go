@@ -242,6 +242,10 @@ func (cli *RttyClient) Close() {
 	}
 	cli.mu.Unlock()
 
+	if cli.conn != nil {
+		cli.conn.Close()
+	}
+
 	cli.sessions.Range(func(key, value any) bool {
 		s := value.(*TermSession)
 
