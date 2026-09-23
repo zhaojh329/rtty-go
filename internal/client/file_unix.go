@@ -32,7 +32,10 @@ func handleFileMsg(cli *RttyClient, data []byte) error {
 		return nil
 	}
 
-	s := val.(*TermSession)
+	s, ok := val.(*TermSession)
+	if !ok {
+		return nil
+	}
 
 	data = data[33:]
 

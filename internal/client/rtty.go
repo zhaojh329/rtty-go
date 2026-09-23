@@ -10,7 +10,6 @@ import (
 	"crypto/x509"
 	"encoding/binary"
 	"fmt"
-	"io"
 	"math/rand/v2"
 	"net"
 	"os"
@@ -24,11 +23,16 @@ import (
 )
 
 const (
-	rttyProtoVer         = byte(5)
+	rttyProtoVer         = byte(6)
 	rttyTermLimit        = 10
-	rttyTermTimeout      = 600 * time.Second
 	rttyHeartbeatTimeout = 3 * time.Second
 )
+
+type Session interface {
+	stop() bool
+	writeInput([]byte)
+	ack(uint16)
+}
 
 type RttyClient struct {
 	sessions sync.Map
@@ -37,6 +41,7 @@ type RttyClient struct {
 	conn             net.Conn
 	cfg              Config
 	ntty             int
+	nserial          int
 	heartbeatTimer   *time.Timer
 	lastHeartbeat    time.Time
 	waitingHeartbeat bool
@@ -51,15 +56,17 @@ func New(cfg Config) *RttyClient {
 }
 
 var msgHandlers = map[byte]func(*RttyClient, []byte) error{
-	proto.MsgTypeHeartbeat: handleHeartbeatMsg,
-	proto.MsgTypeLogin:     handleLoginMsg,
-	proto.MsgTypeLogout:    handleLogoutMsg,
-	proto.MsgTypeTermData:  handleTermDataMsg,
-	proto.MsgTypeWinsize:   handleTermWinsizeMsg,
-	proto.MsgTypeAck:       handleAckMsg,
-	proto.MsgTypeFile:      handleFileMsg,
-	proto.MsgTypeCmd:       handleCmdMsg,
-	proto.MsgTypeHttp:      handleHttpMsg,
+	proto.MsgTypeHeartbeat:   handleHeartbeatMsg,
+	proto.MsgTypeLogin:       handleTermLoginMsg,
+	proto.MsgTypeTermData:    handleTermDataMsg,
+	proto.MsgTypeWinsize:     handleTermWinsizeMsg,
+	proto.MsgTypeAck:         handleAckMsg,
+	proto.MsgTypeFile:        handleFileMsg,
+	proto.MsgTypeCmd:         handleCmdMsg,
+	proto.MsgTypeHttp:        handleHttpMsg,
+	proto.MsgTypeSerialPorts: handleSerialPortsMsg,
+	proto.MsgTypeSerialOpen:  handleSerialOpenMsg,
+	proto.MsgTypeLogout:      handleLogoutMsg,
 }
 
 func (cli *RttyClient) Run() {
@@ -248,19 +255,8 @@ func (cli *RttyClient) Close() {
 		cli.conn.Close()
 	}
 
-	cli.sessions.Range(func(key, value any) bool {
-		s := value.(*TermSession)
-
-		s.mu.Lock()
-		if s.timer != nil {
-			s.timer.Stop()
-			s.timer = nil
-		}
-		s.mu.Unlock()
-
-		s.term.Close()
-		s.fc.reset()
-		cli.sessions.Delete(key)
+	cli.sessions.Range(func(_, value any) bool {
+		value.(Session).stop()
 		return true
 	})
 
@@ -338,189 +334,43 @@ func handleHeartbeatMsg(cli *RttyClient, data []byte) error {
 	return nil
 }
 
-func handleLoginMsg(cli *RttyClient, data []byte) error {
-
-	sid := string(data)
-
-	var retCode byte
-
-	cli.mu.Lock()
-	if cli.ntty == rttyTermLimit {
-		log.Error().Msgf("maximum number of TTYs reached: %d", cli.ntty)
-		retCode = 1
-	} else {
-		term, err := NewTerminal(cli.cfg.Username)
-		if err != nil {
-			log.Error().Err(err).Msg("failed to create terminal")
-			retCode = 1
-		} else {
-			log.Info().Msgf("new tty: %d/%d %s", cli.ntty, rttyTermLimit, sid)
-
-			s := &TermSession{
-				cli:  cli,
-				sid:  sid,
-				term: term,
-			}
-
-			s.fc = &RttyFileContext{ses: s}
-
-			cli.sessions.Store(sid, s)
-
-			cli.ntty++
-
-			go s.Run(cli)
-		}
-	}
-	cli.mu.Unlock()
-
-	cli.WriteMsg(proto.MsgTypeLogin, sid, retCode)
-
-	return nil
-}
-
 func handleLogoutMsg(cli *RttyClient, data []byte) error {
 	sid := string(data)
-
-	if val, loaded := cli.sessions.LoadAndDelete(sid); loaded {
-		log.Info().Msgf("delete tty %s", sid)
-		s := val.(*TermSession)
-
-		s.term.Close()
-
-		s.mu.Lock()
-		if s.timer != nil {
-			s.timer.Stop()
-			s.timer = nil
-		}
-		cli.ntty--
-		s.mu.Unlock()
-	} else {
-		log.Error().Msgf("tty session %s not found", sid)
+	val, ok := cli.sessions.Load(sid)
+	if !ok {
+		log.Error().Msgf("session %s not found", sid)
 		return nil
 	}
+
+	val.(Session).stop()
 
 	return nil
 }
 
 func handleTermDataMsg(cli *RttyClient, data []byte) error {
 	sid := string(data[:32])
-
 	val, ok := cli.sessions.Load(sid)
 	if !ok {
-		log.Error().Msgf("terminal session %s not found", sid)
+		log.Error().Msgf("session %s not found", sid)
 		return nil
 	}
 
-	s := val.(*TermSession)
-	s.term.Write(data[32:])
-	s.active()
-
-	return nil
-}
-
-func handleTermWinsizeMsg(cli *RttyClient, data []byte) error {
-	sid := string(data[:32])
-
-	val, ok := cli.sessions.Load(sid)
-	if !ok {
-		log.Error().Msgf("terminal session %s not found", sid)
-		return nil
-	}
-
-	col := binary.BigEndian.Uint16(data[32:34])
-	row := binary.BigEndian.Uint16(data[34:36])
-
-	err := val.(*TermSession).term.SetWinSize(col, row)
-	if err != nil {
-		log.Error().Err(err).Msgf("failed to set terminal size for %s", sid)
-		return err
-	}
-
-	log.Debug().Msgf("setting terminal %s size to %dx%d", sid, col, row)
+	val.(Session).writeInput(data[32:])
 
 	return nil
 }
 
 func handleAckMsg(cli *RttyClient, data []byte) error {
 	sid := string(data[:32])
-
 	val, ok := cli.sessions.Load(sid)
 	if !ok {
-		log.Error().Msgf("terminal session %s not found", sid)
+		log.Error().Msgf("session %s not found", sid)
 		return nil
 	}
 
-	val.(*TermSession).term.Ack(binary.BigEndian.Uint16(data[32:34]))
+	val.(Session).ack(binary.BigEndian.Uint16(data[32:34]))
 
 	return nil
-}
-
-type TermSession struct {
-	cli   *RttyClient
-	sid   string
-	term  *Terminal
-	timer *time.Timer
-	mu    sync.Mutex
-	fc    *RttyFileContext
-}
-
-func (s *TermSession) Write(buf []byte) (int, error) {
-	length := len(buf)
-
-	s.active()
-
-	if s.fc.detect(buf) {
-		return length, nil
-	}
-
-	s.cli.WriteMsg(proto.MsgTypeTermData, s.sid, buf)
-
-	s.term.WaitAck(length)
-
-	return length, nil
-}
-
-func (s *TermSession) Run(cli *RttyClient) {
-	s.mu.Lock()
-	s.timer = time.AfterFunc(rttyTermTimeout, func() {
-		log.Info().Msgf("tty %s inactive over %v, now kill it", s.sid, rttyTermTimeout)
-		s.term.Close()
-	})
-	s.mu.Unlock()
-
-	if _, err := io.Copy(s, s.term); err != nil {
-		log.Error().Err(err).Msgf("error while copying terminal data for %s", s.sid)
-	}
-	s.close(cli)
-}
-
-func (s *TermSession) active() {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	if s.timer != nil {
-		s.timer.Reset(rttyTermTimeout)
-	}
-}
-
-func (s *TermSession) close(cli *RttyClient) {
-	if _, loaded := cli.sessions.LoadAndDelete(s.sid); !loaded {
-		return
-	}
-
-	cli.WriteMsg(proto.MsgTypeLogout, s.sid)
-
-	s.term.Close()
-
-	s.mu.Lock()
-	if s.timer != nil {
-		s.timer.Stop()
-		s.timer = nil
-	}
-	cli.ntty--
-	s.mu.Unlock()
-
-	log.Info().Msgf("delete tty %s", s.sid)
 }
 
 func putMsgAttr(bb *bytebufferpool.ByteBuffer, attrType byte, val any) {
