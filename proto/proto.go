@@ -33,7 +33,83 @@ const (
 	MsgTypeFile
 	MsgTypeHttp
 	MsgTypeAck
+	MsgTypeSerialPorts
+	MsgTypeSerialOpen
 )
+
+const (
+	SerialOK = byte(iota)
+	SerialBusy
+	SerialNotFound
+	SerialPermission
+	SerialInvalidSettings
+	SerialFailed
+)
+
+type SerialParity byte
+
+const (
+	SerialParityNone SerialParity = iota
+	SerialParityOdd
+	SerialParityEven
+)
+
+type SerialSettings struct {
+	Port     string
+	BaudRate int
+	DataBits int
+	StopBits int
+	Parity   SerialParity
+}
+
+func (s SerialSettings) MarshalBinary() ([]byte, error) {
+	if !s.Valid() {
+		return nil, fmt.Errorf("invalid serial settings")
+	}
+
+	data := make([]byte, 7, 7+len(s.Port))
+	binary.BigEndian.PutUint32(data[:4], uint32(s.BaudRate))
+	data[4] = byte(s.DataBits)
+	data[5] = byte(s.StopBits)
+	data[6] = byte(s.Parity)
+	data = append(data, s.Port...)
+
+	return data, nil
+}
+
+func ParseSerialSettings(data []byte) (SerialSettings, error) {
+	if len(data) < 8 || len(data) > 263 {
+		return SerialSettings{}, fmt.Errorf("invalid serial settings length")
+	}
+
+	baud := binary.BigEndian.Uint32(data[:4])
+	if baud > 4000000 {
+		return SerialSettings{}, fmt.Errorf("invalid serial baud rate")
+	}
+
+	settings := SerialSettings{
+		Port: string(data[7:]), BaudRate: int(baud),
+		DataBits: int(data[4]), StopBits: int(data[5]), Parity: SerialParity(data[6]),
+	}
+
+	if settings.Parity > SerialParityEven {
+		return SerialSettings{}, fmt.Errorf("invalid serial parity")
+	}
+
+	if !settings.Valid() {
+		return settings, fmt.Errorf("invalid serial settings")
+	}
+
+	return settings, nil
+}
+
+func (s SerialSettings) Valid() bool {
+	return s.Port != "" && len(s.Port) <= 256 &&
+		s.BaudRate >= 300 && s.BaudRate <= 4000000 &&
+		s.DataBits >= 5 && s.DataBits <= 8 &&
+		(s.StopBits == 1 || s.StopBits == 2) &&
+		s.Parity <= SerialParityEven
+}
 
 const (
 	MsgRegAttrHeartbeat = byte(iota)
@@ -63,23 +139,27 @@ const (
 )
 
 var minimumMsgLensRtty = map[byte]int{
-	MsgTypeRegister: 1,
-	MsgTypeLogin:    32,
-	MsgTypeLogout:   32,
-	MsgTypeTermData: 33,
-	MsgTypeWinsize:  36,
-	MsgTypeFile:     33,
-	MsgTypeAck:      34,
-	MsgTypeHttp:     25,
+	MsgTypeRegister:    1,
+	MsgTypeLogin:       32,
+	MsgTypeLogout:      32,
+	MsgTypeTermData:    33,
+	MsgTypeWinsize:     36,
+	MsgTypeFile:        33,
+	MsgTypeAck:         34,
+	MsgTypeHttp:        25,
+	MsgTypeSerialPorts: 32,
+	MsgTypeSerialOpen:  40,
 }
 
 var minimumMsgLensRttys = map[byte]int{
-	MsgTypeRegister: 1,
-	MsgTypeLogin:    33,
-	MsgTypeLogout:   32,
-	MsgTypeTermData: 33,
-	MsgTypeFile:     33,
-	MsgTypeHttp:     18,
+	MsgTypeRegister:    1,
+	MsgTypeLogin:       33,
+	MsgTypeLogout:      32,
+	MsgTypeTermData:    33,
+	MsgTypeFile:        33,
+	MsgTypeHttp:        18,
+	MsgTypeSerialPorts: 33,
+	MsgTypeSerialOpen:  33,
 }
 
 func MsgTypeName(typ byte) string {
@@ -104,6 +184,10 @@ func MsgTypeName(typ byte) string {
 		return "http"
 	case MsgTypeAck:
 		return "ack"
+	case MsgTypeSerialPorts:
+		return "serialports"
+	case MsgTypeSerialOpen:
+		return "serialopen"
 	default:
 		return fmt.Sprintf("unknown(%d)", typ)
 	}
