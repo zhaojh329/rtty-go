@@ -173,6 +173,13 @@ func (ctx *RttyFileContext) startDownload(data []byte) {
 	ctx.totalSize = binary.BigEndian.Uint32(data)
 	ctx.remainSize = ctx.totalSize
 
+	name := string(data[4:])
+	if name == "" || name == "." || name == ".." || filepath.Base(name) != name {
+		ctx.sendControlMsg(filetransfer.ControlErr, nil)
+		ctx.reset()
+		return
+	}
+
 	err := utils.CheckSpaceAvailable(ctx.savepath, uint64(ctx.totalSize))
 	if err != nil {
 		log.Error().Err(err).Msgf("download file fail for %s", ctx.savepath)
@@ -180,8 +187,6 @@ func (ctx *RttyFileContext) startDownload(data []byte) {
 		ctx.reset()
 		return
 	}
-
-	name := string(data[4:])
 
 	ctx.savepath = filepath.Join(ctx.savepath, name)
 
