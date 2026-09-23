@@ -75,7 +75,11 @@ func handleHttpMsg(cli *RttyClient, data []byte) error {
 			conn.cancel()
 			return nil
 		}
-		conn.data <- bb
+		select {
+		case conn.data <- bb:
+		case <-conn.ctx.Done():
+			bytebufferpool.Put(bb)
+		}
 		return nil
 	}
 
@@ -108,6 +112,12 @@ func (c *RttyHttpConn) run(cli *RttyClient, isHttps bool, saddr [18]byte, daddr 
 	}
 
 	if err != nil {
+		c.cancel()
+		cli.httpCons.CompareAndDelete(saddr, c)
+		for len(c.data) > 0 {
+			bytebufferpool.Put(<-c.data)
+		}
+
 		log.Error().Err(err).Msg("Failed to connect to target address")
 		cli.SendHttpMsg(saddr, nil)
 		return
