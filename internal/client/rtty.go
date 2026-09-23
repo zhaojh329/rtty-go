@@ -41,6 +41,7 @@ type RttyClient struct {
 	lastHeartbeat    time.Time
 	waitingHeartbeat bool
 	mu               sync.Mutex
+	writeMu          sync.Mutex
 
 	msg *proto.MsgReaderWriter
 }
@@ -200,6 +201,9 @@ func (cli *RttyClient) ReadMsg() (byte, []byte, error) {
 }
 
 func (cli *RttyClient) WriteMsg(typ byte, data ...any) error {
+	cli.writeMu.Lock()
+	defer cli.writeMu.Unlock()
+
 	return cli.msg.Write(typ, data...)
 }
 
