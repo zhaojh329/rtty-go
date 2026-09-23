@@ -24,4 +24,4 @@ jobs:
         run: |
           os=$(echo $target | awk -F. '{print $1}')
           arch=$(echo $target | awk -F. '{print $2}')
-          ./build.sh $os $arch
+          ./scripts/build.sh $os $arch

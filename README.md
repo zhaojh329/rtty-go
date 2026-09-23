@@ -23,4 +23,9 @@
 
 This is a Go language rewrite of the original C-based [rtty](https://github.com/zhaojh329/rtty) remote terminal client.
 
+## Build
+
+Run `go build -o rtty ./cmd/rtty` or `./scripts/build.sh linux amd64` from the repository root.
+The sample configuration remains at `rtty.conf`; pass it explicitly with `--conf rtty.conf`.
+
 ## ❤️ [Donation](https://zhaojh329.github.io/zhaojh329/)

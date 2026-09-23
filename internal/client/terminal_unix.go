@@ -6,7 +6,7 @@
  * Author: Jianhui Zhao <zhaojh329@gmail.com>
  */
 
-package main
+package client
 
 import (
 	"errors"

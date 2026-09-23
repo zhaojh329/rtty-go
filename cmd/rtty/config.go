@@ -14,28 +14,12 @@ import (
 	"github.com/kylelemons/go-gypsy/yaml"
 	"github.com/rs/zerolog/log"
 	"github.com/urfave/cli/v3"
+	"github.com/zhaojh329/rtty-go/internal/client"
 	"github.com/zhaojh329/rtty-go/proto"
 )
 
-type Config struct {
-	group       string
-	id          string
-	host        string
-	port        uint16
-	description string
-	token       string
-	heartbeat   uint8
-	username    string
-	reconnect   bool
-
-	ssl      bool
-	cacert   string
-	sslcert  string
-	sslkey   string
-	insecure bool
-}
-
-func (cfg *Config) Parse(c *cli.Command) error {
+func parseConfig(c *cli.Command) (client.Config, error) {
+	cfg := client.Config{Host: "localhost", Heartbeat: 30, Port: 5912}
 	var yamlCfg *yaml.File
 	var err error
 
@@ -43,65 +27,65 @@ func (cfg *Config) Parse(c *cli.Command) error {
 	if conf != "" {
 		yamlCfg, err = yaml.ReadFile(conf)
 		if err != nil {
-			return fmt.Errorf(`read config file: %s`, err.Error())
+			return cfg, fmt.Errorf(`read config file: %s`, err.Error())
 		}
 	}
 
 	fields := map[string]any{
-		"group":       &cfg.group,
-		"id":          &cfg.id,
-		"host":        &cfg.host,
-		"port":        &cfg.port,
-		"description": &cfg.description,
-		"token":       &cfg.token,
-		"heartbeat":   &cfg.heartbeat,
-		"username":    &cfg.username,
-		"reconnect":   &cfg.reconnect,
-		"ssl":         &cfg.ssl,
-		"cacert":      &cfg.cacert,
-		"cert":        &cfg.sslcert,
-		"key":         &cfg.sslkey,
-		"insecure":    &cfg.insecure,
+		"group":       &cfg.Group,
+		"id":          &cfg.ID,
+		"host":        &cfg.Host,
+		"port":        &cfg.Port,
+		"description": &cfg.Description,
+		"token":       &cfg.Token,
+		"heartbeat":   &cfg.Heartbeat,
+		"username":    &cfg.Username,
+		"reconnect":   &cfg.Reconnect,
+		"ssl":         &cfg.SSL,
+		"cacert":      &cfg.CACert,
+		"cert":        &cfg.SSLCert,
+		"key":         &cfg.SSLKey,
+		"insecure":    &cfg.Insecure,
 	}
 
 	for name, opt := range fields {
 		if yamlCfg != nil {
 			if err := getConfigOpt(yamlCfg, name, opt); err != nil {
-				return err
+				return cfg, err
 			}
 		}
 		getFlagOpt(c, name, opt)
 	}
 
-	getFlagOpt(c, "f", &cfg.username)
-	getFlagOpt(c, "a", &cfg.reconnect)
+	getFlagOpt(c, "f", &cfg.Username)
+	getFlagOpt(c, "a", &cfg.Reconnect)
 
-	if cfg.id == "" {
-		return fmt.Errorf("you must specify an id for your device")
+	if cfg.ID == "" {
+		return cfg, fmt.Errorf("you must specify an id for your device")
 	}
 
-	if strings.ContainsAny(cfg.id, " ") || len(cfg.id) > proto.MaximumDevIDLen {
-		return fmt.Errorf("invalid device id: must be 1-32 characters and cannot contain spaces")
+	if strings.ContainsAny(cfg.ID, " ") || len(cfg.ID) > proto.MaximumDevIDLen {
+		return cfg, fmt.Errorf("invalid device id: must be 1-32 characters and cannot contain spaces")
 	}
 
-	if strings.ContainsAny(cfg.group, " ") || len(cfg.group) > proto.MaximumGroupLen {
-		return fmt.Errorf("invalid group: must be 1-16 characters and cannot contain spaces")
+	if strings.ContainsAny(cfg.Group, " ") || len(cfg.Group) > proto.MaximumGroupLen {
+		return cfg, fmt.Errorf("invalid group: must be 1-16 characters and cannot contain spaces")
 	}
 
-	if len(cfg.description) > proto.MaximumDescLen {
-		return fmt.Errorf("description too long: must be 1-126 characters")
+	if len(cfg.Description) > proto.MaximumDescLen {
+		return cfg, fmt.Errorf("description too long: must be 1-126 characters")
 	}
 
-	if cfg.heartbeat < 5 {
-		cfg.heartbeat = 5
+	if cfg.Heartbeat < 5 {
+		cfg.Heartbeat = 5
 		log.Warn().Msgf("heartbeat interval too low, setting to minimum 5 seconds")
 	}
 
 	if runtime.GOOS != "windows" && os.Getuid() != 0 {
-		return fmt.Errorf("operation not permitted, must be run as root")
+		return cfg, fmt.Errorf("operation not permitted, must be run as root")
 	}
 
-	return nil
+	return cfg, nil
 }
 
 func getConfigOpt(yamlCfg *yaml.File, name string, opt any) error {

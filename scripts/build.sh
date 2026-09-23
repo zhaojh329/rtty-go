@@ -1,6 +1,8 @@
 #!/bin/sh
 
-VERSION=$(grep 'const RttyVersion' main.go | cut -d'"' -f2 | sed 's/^v//')
+cd "$(dirname "$0")/.." || exit 1
+
+VERSION=$(grep 'const RttyVersion' cmd/rtty/main.go | cut -d'"' -f2 | sed 's/^v//')
 
 GitCommit=$(git log --pretty=format:"%h" -1)
 BuildTime=$(date +%FT%T%z)
@@ -23,7 +25,7 @@ generate() {
 		bin="rtty.exe"
 	}
 
-	GOOS=$os GOARCH=$arch CGO_ENABLED=0 go build -ldflags="-s -w -X main.GitCommit=$GitCommit -X main.BuildTime=$BuildTime" -o $dir/$bin
+	GOOS=$os GOARCH=$arch CGO_ENABLED=0 go build -ldflags="-s -w -X main.GitCommit=$GitCommit -X main.BuildTime=$BuildTime" -o $dir/$bin ./cmd/rtty
 
 	[ -n "$COMPRESS" ] && {
 		tar -jcvf $dir.tar.bz2 $dir

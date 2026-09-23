@@ -3,7 +3,7 @@
  * Author: Jianhui Zhao <zhaojh329@gmail.com>
  */
 
-package main
+package client
 
 import (
 	"crypto/tls"
@@ -45,6 +45,10 @@ type RttyClient struct {
 	msg *proto.MsgReaderWriter
 }
 
+func New(cfg Config) *RttyClient {
+	return &RttyClient{cfg: cfg}
+}
+
 var msgHandlers = map[byte]func(*RttyClient, []byte) error{
 	proto.MsgTypeHeartbeat: handleHeartbeatMsg,
 	proto.MsgTypeLogin:     handleLoginMsg,
@@ -61,7 +65,7 @@ func (cli *RttyClient) Run() {
 	for {
 		cli.run()
 
-		if !cli.cfg.reconnect {
+		if !cli.cfg.Reconnect {
 			break
 		}
 
@@ -141,19 +145,19 @@ func (cli *RttyClient) Connect() error {
 	var conn net.Conn
 	var err error
 
-	addr := net.JoinHostPort(cfg.host, fmt.Sprintf("%d", cfg.port))
+	addr := net.JoinHostPort(cfg.Host, fmt.Sprintf("%d", cfg.Port))
 
-	if cfg.ssl {
+	if cfg.SSL {
 		dialer := &net.Dialer{
 			Timeout: 5 * time.Second,
 		}
 
 		tlsConfig := &tls.Config{
-			InsecureSkipVerify: cfg.insecure,
+			InsecureSkipVerify: cfg.Insecure,
 		}
 
-		if cfg.cacert != "" {
-			caCert, err := os.ReadFile(cfg.cacert)
+		if cfg.CACert != "" {
+			caCert, err := os.ReadFile(cfg.CACert)
 			if err != nil {
 				return fmt.Errorf("load cacert fail: %w", err)
 			}
@@ -165,8 +169,8 @@ func (cli *RttyClient) Connect() error {
 
 		}
 
-		if cfg.sslcert != "" && cfg.sslkey != "" {
-			cert, err := tls.LoadX509KeyPair(cfg.sslcert, cfg.sslkey)
+		if cfg.SSLCert != "" && cfg.SSLKey != "" {
+			cert, err := tls.LoadX509KeyPair(cfg.SSLCert, cfg.SSLKey)
 			if err != nil {
 				return fmt.Errorf("load cert and key fail: %w", err)
 			}
@@ -186,7 +190,7 @@ func (cli *RttyClient) Connect() error {
 	cli.msg = proto.NewMsgReaderWriter(proto.RoleRtty, conn)
 	cli.conn = conn
 
-	log.Info().Msgf("Connected to %s:%d", cfg.host, cfg.port)
+	log.Info().Msgf("Connected to %s:%d", cfg.Host, cfg.Port)
 
 	return nil
 }
@@ -207,19 +211,19 @@ func (cli *RttyClient) Register() error {
 
 	bb.WriteByte(rttyProtoVer)
 
-	putMsgAttr(bb, proto.MsgRegAttrHeartbeat, cfg.heartbeat)
-	putMsgAttr(bb, proto.MsgRegAttrDevid, cfg.id)
+	putMsgAttr(bb, proto.MsgRegAttrHeartbeat, cfg.Heartbeat)
+	putMsgAttr(bb, proto.MsgRegAttrDevid, cfg.ID)
 
-	if cfg.group != "" {
-		putMsgAttr(bb, proto.MsgRegAttrGroup, cfg.group)
+	if cfg.Group != "" {
+		putMsgAttr(bb, proto.MsgRegAttrGroup, cfg.Group)
 	}
 
-	if cfg.description != "" {
-		putMsgAttr(bb, proto.MsgRegAttrDescription, cfg.description)
+	if cfg.Description != "" {
+		putMsgAttr(bb, proto.MsgRegAttrDescription, cfg.Description)
 	}
 
-	if cfg.token != "" {
-		putMsgAttr(bb, proto.MsgRegAttrToken, cfg.token)
+	if cfg.Token != "" {
+		putMsgAttr(bb, proto.MsgRegAttrToken, cfg.Token)
 	}
 
 	return cli.WriteMsg(proto.MsgTypeRegister, bb)
@@ -263,7 +267,7 @@ func (cli *RttyClient) startHeartbeat() {
 
 	cli.lastHeartbeat = time.Time{}
 
-	heartbeatInterval := time.Duration(cli.cfg.heartbeat) * time.Second
+	heartbeatInterval := time.Duration(cli.cfg.Heartbeat) * time.Second
 
 	cli.heartbeatTimer = time.AfterFunc(heartbeatInterval, func() {
 		if cli.waitingHeartbeat {
@@ -316,7 +320,7 @@ func handleLoginMsg(cli *RttyClient, data []byte) error {
 		log.Error().Msgf("maximum number of TTYs reached: %d", cli.ntty)
 		retCode = 1
 	} else {
-		term, err := NewTerminal(cli.cfg.username)
+		term, err := NewTerminal(cli.cfg.Username)
 		if err != nil {
 			log.Error().Err(err).Msg("failed to create terminal")
 			retCode = 1

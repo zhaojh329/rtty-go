@@ -6,7 +6,7 @@
  * Author: Jianhui Zhao <zhaojh329@gmail.com>
  */
 
-package main
+package client
 
 import (
 	"fmt"
@@ -25,7 +25,4 @@ func (ctx *RttyFileContext) detect(_ []byte) bool {
 }
 
 func (ctx *RttyFileContext) reset() {
-}
-
-func requestTransferFile(typ byte, path string) {
 }

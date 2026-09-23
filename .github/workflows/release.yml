@@ -22,10 +22,10 @@ jobs:
 
       - name: Build rtty release
         run: |
-          COMPRESS=1 ./build.sh linux amd64
-          COMPRESS=1 ./build.sh linux arm64
-          COMPRESS=1 ./build.sh linux arm
-          COMPRESS=1 ./build.sh windows amd64
+          COMPRESS=1 ./scripts/build.sh linux amd64
+          COMPRESS=1 ./scripts/build.sh linux arm64
+          COMPRESS=1 ./scripts/build.sh linux arm
+          COMPRESS=1 ./scripts/build.sh windows amd64
 
       - name: Upload Release Asset
         uses: softprops/action-gh-release@v1

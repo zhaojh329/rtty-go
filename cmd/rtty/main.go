@@ -11,7 +11,8 @@ import (
 	"runtime"
 	"runtime/debug"
 
-	xlog "github.com/zhaojh329/rtty-go/log"
+	"github.com/zhaojh329/rtty-go/internal/client"
+	xlog "github.com/zhaojh329/rtty-go/internal/log"
 
 	"github.com/rs/zerolog/log"
 	"github.com/sevlyar/go-daemon"
@@ -165,13 +166,7 @@ func cmdAction(c context.Context, cmd *cli.Command) error {
 		return nil
 	}
 
-	cfg := Config{
-		host:      "localhost",
-		heartbeat: 30,
-		port:      5912,
-	}
-
-	err := cfg.Parse(cmd)
+	cfg, err := parseConfig(cmd)
 	if err != nil {
 		return err
 	}
@@ -212,7 +207,7 @@ func cmdAction(c context.Context, cmd *cli.Command) error {
 
 	log.Debug().Msgf("%+v", cfg)
 
-	rtty := &RttyClient{cfg: cfg}
+	rtty := client.New(cfg)
 
 	rtty.Run()
 
