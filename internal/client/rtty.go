@@ -37,6 +37,7 @@ type Session interface {
 type RttyClient struct {
 	sessions sync.Map
 	httpCons sync.Map
+	tcpCons  sync.Map
 
 	conn             net.Conn
 	cfg              Config
@@ -66,6 +67,7 @@ var msgHandlers = map[byte]func(*RttyClient, []byte) error{
 	proto.MsgTypeHttp:        handleHttpMsg,
 	proto.MsgTypeSerialPorts: handleSerialPortsMsg,
 	proto.MsgTypeSerialOpen:  handleSerialOpenMsg,
+	proto.MsgTypeTCP:         handleTCPMsg,
 	proto.MsgTypeLogout:      handleLogoutMsg,
 }
 
@@ -263,6 +265,11 @@ func (cli *RttyClient) Close() {
 	cli.httpCons.Range(func(key, value any) bool {
 		con := value.(*RttyHttpConn)
 		con.cancel()
+		return true
+	})
+
+	cli.tcpCons.Range(func(_, value any) bool {
+		value.(*tcpSession).close(false)
 		return true
 	})
 }

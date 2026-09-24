@@ -35,6 +35,28 @@ const (
 	MsgTypeAck
 	MsgTypeSerialPorts
 	MsgTypeSerialOpen
+	MsgTypeTCP
+)
+
+const (
+	TCPTypeOpen = byte(iota)
+	TCPTypeOpenResult
+	TCPTypeData
+	TCPTypeCloseWrite
+	TCPTypeClose
+	TCPTypeAck
+)
+
+// Each TCP direction starts with this many bytes of send credit. ACK payloads
+// contain a big-endian uint32 count of bytes written to the destination socket.
+const (
+	TCPWindowSize  = 256 * 1024
+	TCPMaxDataSize = 32 * 1024
+)
+
+const (
+	TCPOpenOK = byte(iota)
+	TCPOpenFailed
 )
 
 const (
@@ -153,6 +175,7 @@ var minimumMsgLensRtty = map[byte]int{
 	MsgTypeHttp:        25,
 	MsgTypeSerialPorts: 32,
 	MsgTypeSerialOpen:  40,
+	MsgTypeTCP:         33,
 }
 
 var minimumMsgLensRttys = map[byte]int{
@@ -164,6 +187,7 @@ var minimumMsgLensRttys = map[byte]int{
 	MsgTypeHttp:        18,
 	MsgTypeSerialPorts: 33,
 	MsgTypeSerialOpen:  33,
+	MsgTypeTCP:         33,
 }
 
 func MsgTypeName(typ byte) string {
@@ -192,6 +216,8 @@ func MsgTypeName(typ byte) string {
 		return "serialports"
 	case MsgTypeSerialOpen:
 		return "serialopen"
+	case MsgTypeTCP:
+		return "tcp"
 	default:
 		return fmt.Sprintf("unknown(%d)", typ)
 	}
