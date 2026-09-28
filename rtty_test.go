@@ -103,16 +103,99 @@ func TestReconnectAfterServerClose(t *testing.T) {
 		reconnect: true,
 	}}
 
-	go cli.Run()
-	t.Cleanup(cli.Stop)
+	startClientForTest(t, cli)
 
 	waitAccepts(t, &accepted, 2, 10*time.Second)
+}
+
+type replyOnWriteConn struct {
+	net.Conn
+	onWrite func()
+	closed  atomic.Bool
+}
+
+func (c *replyOnWriteConn) Write(b []byte) (int, error) {
+	n, err := c.Conn.Write(b)
+	c.onWrite()
+	return n, err
+}
+
+func (c *replyOnWriteConn) Close() error {
+	c.closed.Store(true)
+	return c.Conn.Close()
+}
+
+func TestHeartbeatReplyBeforeWriteReturns(t *testing.T) {
+	old := heartbeatTimeoutMin
+	heartbeatTimeoutMin = 100 * time.Millisecond
+	t.Cleanup(func() { heartbeatTimeoutMin = old })
+
+	c1, c2 := net.Pipe()
+	defer c2.Close()
+	go func() {
+		buf := make([]byte, 1024)
+		for {
+			if _, err := c2.Read(buf); err != nil {
+				return
+			}
+		}
+	}()
+
+	cli := &RttyClient{cfg: Config{heartbeat: 1}}
+	conn := &replyOnWriteConn{Conn: c1, onWrite: func() { cli.recvSeq.Add(1) }}
+	cli.conn = conn
+	cli.msg = proto.NewMsgReaderWriter(proto.RoleRtty, conn)
+
+	cli.startHeartbeat()
+	t.Cleanup(cli.Close)
+
+	time.Sleep(4500 * time.Millisecond)
+
+	if conn.closed.Load() {
+		t.Fatal("connection closed although every heartbeat was answered")
+	}
+}
+
+func TestHeartbeatKeepsSendingWhileReplyPending(t *testing.T) {
+	c1, c2 := net.Pipe()
+	defer c2.Close()
+
+	var heartbeats atomic.Int32
+	go func() {
+		msg := proto.NewMsgReaderWriter(proto.RoleRttys, c2)
+		for {
+			typ, _, err := msg.Read()
+			if err != nil {
+				return
+			}
+			if typ == proto.MsgTypeHeartbeat {
+				heartbeats.Add(1)
+			}
+		}
+	}()
+
+	cli := &RttyClient{cfg: Config{heartbeat: 1}}
+	cli.conn = c1
+	cli.msg = proto.NewMsgReaderWriter(proto.RoleRtty, c1)
+
+	cli.startHeartbeat()
+	t.Cleanup(cli.Close)
+
+	time.Sleep(3500 * time.Millisecond)
+
+	if n := heartbeats.Load(); n < 3 {
+		t.Fatalf("got %d heartbeats while waiting for reply, want at least 3", n)
+	}
 }
 
 func TestReconnectAfterHeartbeatTimeout(t *testing.T) {
 	old := reconnectWait
 	reconnectWait = func() time.Duration { return 10 * time.Millisecond }
 	t.Cleanup(func() { reconnectWait = old })
+
+	oldTimeout := heartbeatTimeoutMin
+	heartbeatTimeoutMin = 100 * time.Millisecond
+	t.Cleanup(func() { heartbeatTimeoutMin = oldTimeout })
 
 	ln, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
@@ -138,12 +221,11 @@ func TestReconnectAfterHeartbeatTimeout(t *testing.T) {
 		host:      "127.0.0.1",
 		port:      uint16(port),
 		id:        "testdev",
-		heartbeat: 5,
+		heartbeat: 1,
 		reconnect: true,
 	}}
 
-	go cli.Run()
-	t.Cleanup(cli.Stop)
+	startClientForTest(t, cli)
 
 	waitAccepts(t, &accepted, 2, 15*time.Second)
 }

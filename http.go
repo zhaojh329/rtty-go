@@ -98,7 +98,7 @@ func handleHttpMsg(cli *RttyClient, data []byte) error {
 	}
 
 	if !conn.enqueue(bb) {
-		cli.httpCons.Delete(saddr)
+		cli.httpCons.CompareAndDelete(saddr, conn)
 		conn.cancel()
 		return nil
 	}
@@ -166,7 +166,7 @@ func (c *RttyHttpConn) drain() {
 
 func (c *RttyHttpConn) run(cli *RttyClient, isHttps bool, saddr [18]byte, daddr string, dport uint16) {
 	defer func() {
-		cli.httpCons.Delete(saddr)
+		cli.httpCons.CompareAndDelete(saddr, c)
 		c.closeLocal()
 		c.drain()
 	}()

@@ -65,7 +65,8 @@ func TestHandleHttpMsgDialFailCleansMap(t *testing.T) {
 	go io.Copy(io.Discard, server)
 
 	cli := &RttyClient{
-		msg: proto.NewMsgReaderWriter(proto.RoleRtty, client),
+		conn: client,
+		msg:  proto.NewMsgReaderWriter(proto.RoleRtty, client),
 	}
 
 	saddr := [18]byte{9, 9, 9, 9}

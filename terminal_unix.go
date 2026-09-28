@@ -149,39 +149,22 @@ func (t *Terminal) SetWinSize(cols, rows uint16) error {
 
 func (t *Terminal) Close() error {
 	t.closeOnce.Do(func() {
-		t.closed.Store(true)
-		t.wait_ack.Store(0)
-		t.cond.Signal()
+		t.stopFlow()
 
 		if t.pty != nil {
 			_ = t.pty.Close()
 		}
 
-		if t.cmd.Process != nil {
+		if t.cmd != nil && t.cmd.Process != nil {
 			_ = t.cmd.Process.Kill()
 		}
 
-		<-t.waitDone
+		if t.waitDone != nil {
+			<-t.waitDone
+		}
 	})
 
 	return nil
-}
-
-func (t *Terminal) Ack(n uint16) {
-	t.wait_ack.Add(-int32(n))
-	t.cond.Signal()
-}
-
-func (t *Terminal) WaitAck(len int) {
-	newWaitAck := t.wait_ack.Add(int32(len))
-
-	if newWaitAck > t.ack_block {
-		t.cond.L.Lock()
-		for t.wait_ack.Load() > t.ack_block {
-			t.cond.Wait()
-		}
-		t.cond.L.Unlock()
-	}
 }
 
 func (t *Terminal) childExited() bool {

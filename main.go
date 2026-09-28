@@ -18,7 +18,7 @@ import (
 	"github.com/urfave/cli/v3"
 )
 
-const RttyVersion = "1.1.3"
+const RttyVersion = "1.1.4"
 
 var (
 	GitCommit = ""

@@ -22,6 +22,7 @@ type Terminal struct {
 	cond      *sync.Cond
 	ack_block int32
 	closeOnce sync.Once
+	closed    atomic.Bool
 }
 
 func NewTerminal(username string) (*Terminal, error) {
@@ -59,26 +60,10 @@ func (t *Terminal) SetWinSize(cols, rows uint16) error {
 
 func (t *Terminal) Close() error {
 	t.closeOnce.Do(func() {
-		t.wait_ack.Store(0)
-		t.cond.Signal()
-		t.pty.Close()
+		t.stopFlow()
+		if t.pty != nil {
+			t.pty.Close()
+		}
 	})
 	return nil
-}
-
-func (t *Terminal) Ack(n uint16) {
-	t.wait_ack.Add(-int32(n))
-	t.cond.Signal()
-}
-
-func (t *Terminal) WaitAck(len int) {
-	newWaitAck := t.wait_ack.Add(int32(len))
-
-	if newWaitAck > t.ack_block {
-		t.cond.L.Lock()
-		for t.wait_ack.Load() > t.ack_block {
-			t.cond.Wait()
-		}
-		t.cond.L.Unlock()
-	}
 }

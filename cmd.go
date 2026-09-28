@@ -43,38 +43,44 @@ func handleCmdMsg(cli *RttyClient, data []byte) error {
 	}
 
 	log.Debug().Msgf("command: %s, username: %s, token: %s, params: %v", cmdName, username, token, params)
+	select {
+	case rttyCmdSemaphore <- struct{}{}:
+		// Account and executable lookups may block on local/NSS services. Keep
+		// them off the protocol receive loop, just like command execution.
+		go func() {
+			defer func() { <-rttyCmdSemaphore }()
+			prepareCommand(cli, username, cmdName, params, token)
+		}()
+	default:
+		log.Warn().Msgf("command limit reached: %d", rttyCmdRunningLimit)
+		cmdErrReply(cli, token, rttyCmdErrNoMem)
+	}
+	return nil
+}
 
+func prepareCommand(cli *RttyClient, username, cmdName string, params []string, token string) {
 	u, err := user.Lookup(username)
 	if err != nil {
 		cmdErrReply(cli, token, rttyCmdErrPermit)
-		return nil
+		return
 	}
 
 	cmdPath, err := exec.LookPath(cmdName)
 	if cmdPath == "" {
 		log.Error().Err(err).Msgf("command not found: %s", cmdName)
 		cmdErrReply(cli, token, rttyCmdErrNotFound)
-		return nil
+		return
 	}
 
-	select {
-	case rttyCmdSemaphore <- struct{}{}:
-		go executeCommand(cli, u, cmdPath, params, token)
-	default:
-		log.Warn().Msgf("command limit reached: %d", rttyCmdRunningLimit)
-		cmdErrReply(cli, token, rttyCmdErrNoMem)
-	}
-
-	return nil
+	executeCommand(cli, u, cmdPath, params, token)
 }
 
 func executeCommand(cli *RttyClient, u *user.User, cmdPath string, params []string, token string) {
-	defer func() {
-		<-rttyCmdSemaphore
-	}()
-
 	log.Debug().Msgf("starting command execution: %s, token: %s", cmdPath, token)
 
+	// Preserve the existing 30-second command lifetime across link loss (an
+	// update command may itself restart rtty). Replies remain pinned to this
+	// connection attempt and cannot leak into the reconnected session.
 	ctx, cancel := context.WithTimeout(context.Background(), rttyCmdExecTimeout)
 	defer cancel()
 
