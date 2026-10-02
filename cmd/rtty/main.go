@@ -48,9 +48,8 @@ func main() {
 		Version: RttyVersion,
 		Flags: []cli.Flag{
 			&cli.StringFlag{
-				Name:    "conf",
-				Aliases: []string{"c"},
-				Usage:   "config file to load",
+				Name:  "conf",
+				Usage: "config file to load",
 			},
 			&cli.StringFlag{
 				Name:    "group",
