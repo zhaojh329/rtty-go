@@ -1,33 +1,19 @@
 package filetransfer
 
 import (
-	"encoding/binary"
+	"strings"
 	"testing"
 )
 
-func TestLocalTransferWireValues(t *testing.T) {
-	magic := NewMagic('S', 0x12345678, 9)
-	if !IsMagic(magic[:]) || magic[3] != 'S' || binary.NativeEndian.Uint32(magic[4:]) != 0x12345678 || binary.NativeEndian.Uint32(magic[8:]) != 9 {
-		t.Errorf("invalid transfer magic: %v", magic)
+func TestValidName(t *testing.T) {
+	for _, name := range []string{"", ".", "..", "../escape", "a/b", "a\x00b", strings.Repeat("x", 256)} {
+		if ValidName([]byte(name)) {
+			t.Errorf("accepted %q", name)
+		}
 	}
-
-	wrongPrefix := magic
-	wrongPrefix[0] = 0
-	if IsMagic(wrongPrefix[:]) || IsMagic(magic[:11]) {
-		t.Error("accepted an invalid transfer magic")
-	}
-
-	if ControlMessageSize != 129 {
-		t.Errorf("control message size = %d", ControlMessageSize)
-	}
-
-	values := []byte{
-		ControlRequestAccept, ControlProgress, ControlInfo, ControlBusy,
-		ControlAbort, ControlNoSpace, ControlErrExist, ControlErr,
-	}
-	for i, value := range values {
-		if value != byte(i) {
-			t.Errorf("control type %d = %d", i, value)
+	for _, name := range []string{"file", ".hidden", "a\\b", strings.Repeat("x", 255)} {
+		if !ValidName([]byte(name)) {
+			t.Errorf("rejected %q", name)
 		}
 	}
 }

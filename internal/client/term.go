@@ -98,10 +98,6 @@ func (s *TermSession) Write(buf []byte) (int, error) {
 
 	s.active()
 
-	if s.fc.detect(buf) {
-		return length, nil
-	}
-
 	s.cli.WriteMsg(proto.MsgTypeTermData, s.sid, buf)
 
 	s.term.WaitAck(length)
@@ -130,6 +126,10 @@ func (s *TermSession) Run() {
 	})
 	s.mu.Unlock()
 
+	if err := s.fc.init(); err != nil {
+		log.Error().Err(err).Msgf("file transfer unavailable for terminal %s", s.sid)
+	}
+
 	if _, err := io.Copy(s, s.term); err != nil {
 		log.Error().Err(err).Msgf("error while copying terminal data for %s", s.sid)
 	}
@@ -157,8 +157,8 @@ func (s *TermSession) stop() bool {
 	}
 	s.mu.Unlock()
 
+	s.fc.close()
 	s.term.Close()
-	s.fc.reset()
 
 	s.cli.mu.Lock()
 	s.cli.ntty--

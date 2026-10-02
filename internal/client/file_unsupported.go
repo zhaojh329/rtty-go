@@ -1,5 +1,4 @@
-//go:build windows
-// +build windows
+//go:build !linux
 
 /* SPDX-License-Identifier: MIT */
 /*
@@ -8,21 +7,19 @@
 
 package client
 
-import (
-	"fmt"
-)
+import "fmt"
 
 func handleFileMsg(cli *RttyClient, data []byte) error {
-	return fmt.Errorf("not supported on Windows")
+	return fmt.Errorf("file transfer is only supported on Linux")
 }
 
 type RttyFileContext struct {
 	ses *TermSession
 }
 
-func (ctx *RttyFileContext) detect(_ []byte) bool {
-	return false
+func (ctx *RttyFileContext) init() error {
+	return nil
 }
 
-func (ctx *RttyFileContext) reset() {
+func (ctx *RttyFileContext) close() {
 }

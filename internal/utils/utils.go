@@ -5,15 +5,7 @@
 
 package utils
 
-import (
-	"fmt"
-	"os"
-)
-
-func FileExists(filename string) bool {
-	_, err := os.Stat(filename)
-	return err == nil || !os.IsNotExist(err)
-}
+import "fmt"
 
 func FormatSize(size uint64) string {
 	units := []string{"B", "KB", "MB", "GB", "TB"}

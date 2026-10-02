@@ -157,13 +157,11 @@ func cmdAction(c context.Context, cmd *cli.Command) error {
 	defer logPanic()
 
 	if cmd.Bool("R") {
-		requestTransferFile('R', "")
-		return nil
+		return requestFileTransfer(c, 'R', "")
 	}
 
 	if cmd.IsSet("S") {
-		requestTransferFile('S', cmd.String("S"))
-		return nil
+		return requestFileTransfer(c, 'S', cmd.String("S"))
 	}
 
 	cfg, err := parseConfig(cmd)
