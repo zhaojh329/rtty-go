@@ -7,8 +7,6 @@ package main
 
 import (
 	"fmt"
-	"os"
-	"runtime"
 	"strings"
 
 	"github.com/kylelemons/go-gypsy/yaml"
@@ -90,10 +88,6 @@ func parseConfig(c *cli.Command) (client.Config, error) {
 	if cfg.HTTPTimeout > 255 {
 		cfg.HTTPTimeout = 255
 		log.Warn().Msg("HTTP timeout too long, set to 255s")
-	}
-
-	if runtime.GOOS != "windows" && os.Getuid() != 0 {
-		return cfg, fmt.Errorf("operation not permitted, must be run as root")
 	}
 
 	return cfg, nil

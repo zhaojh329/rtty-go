@@ -56,6 +56,10 @@ func resolveLoginPath() (string, error) {
 }
 
 func NewTerminal(username string) (*Terminal, error) {
+	if os.Getuid() != 0 {
+		return nil, errors.New("shell login requires root privileges")
+	}
+
 	loginPath, err := resolveLoginPath()
 	if err != nil {
 		return nil, err

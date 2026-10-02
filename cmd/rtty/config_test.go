@@ -67,10 +67,6 @@ func TestParseConfig(t *testing.T) {
 }
 
 func TestHTTPTimeoutConfig(t *testing.T) {
-	if os.Getuid() > 0 {
-		t.Skip("config parsing currently requires root")
-	}
-
 	tests := []struct {
 		name string
 		yaml string

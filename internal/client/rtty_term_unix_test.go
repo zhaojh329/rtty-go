@@ -120,3 +120,41 @@ func TestTermSessionWriteInput(t *testing.T) {
 		t.Fatalf("terminal input: %q, error %v", buf, err)
 	}
 }
+
+func TestTermLoginRequiresRoot(t *testing.T) {
+	if os.Getuid() == 0 {
+		t.Skip("requires a non-root user")
+	}
+
+	for _, username := range []string{"", "root"} {
+		if term, err := NewTerminal(username); err == nil || err.Error() != "shell login requires root privileges" || term != nil {
+			t.Fatalf("NewTerminal(%q) = %v, %v", username, term, err)
+		}
+	}
+
+	cli := New(Config{})
+	clientConn, serverConn := net.Pipe()
+	defer clientConn.Close()
+	defer serverConn.Close()
+	serverConn.SetDeadline(time.Now().Add(time.Second))
+	cli.msg = proto.NewMsgReaderWriter(proto.RoleRtty, clientConn)
+
+	const sid = "0123456789abcdef0123456789abcdef"
+	done := make(chan error, 1)
+	go func() {
+		done <- handleTermLoginMsg(cli, []byte(sid))
+	}()
+
+	reader := proto.NewMsgReaderWriter(proto.RoleRttys, serverConn)
+	typ, data, err := reader.Read()
+	if err != nil || typ != proto.MsgTypeLogin || len(data) != 33 || string(data[:32]) != sid || data[32] != 1 {
+		t.Fatalf("login failure: type=%d data=%q error=%v", typ, data, err)
+	}
+	if err := <-done; err != nil {
+		t.Fatalf("login rejection disconnected the client: %v", err)
+	}
+
+	if _, ok := cli.sessions.Load(sid); ok || cli.ntty != 0 {
+		t.Fatal("rejected login created a terminal session")
+	}
+}
