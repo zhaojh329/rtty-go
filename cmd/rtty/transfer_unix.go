@@ -183,10 +183,22 @@ func updateProgress(startTime time.Time, totalSize uint32, remainSize uint32) {
 	elapsed := time.Since(startTime).Seconds()
 
 	transferred := totalSize - remainSize
-	percentage := uint64(transferred) * 100 / uint64(totalSize)
+	percentage := uint64(100)
+	if totalSize != 0 {
+		percentage = uint64(transferred) * 100 / uint64(totalSize)
+	}
+
+	var speed float64
+	if elapsed > 0 {
+		speed = float64(transferred) / elapsed / 1024 / 1024
+	}
 
 	fmt.Printf("%100c\r", ' ')
-	fmt.Printf("  %d%%    %s     %.3fs\r", percentage, utils.FormatSize(uint64(transferred)), elapsed)
+	fmt.Printf("  %d%%    %s    %.2f MB/s", percentage, utils.FormatSize(uint64(transferred)), speed)
+	if percentage == 100 {
+		fmt.Printf("    %.3fs", elapsed)
+	}
+	fmt.Print("\r")
 
 	os.Stdout.Sync()
 }
