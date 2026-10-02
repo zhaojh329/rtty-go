@@ -10,6 +10,7 @@ type Config struct {
 	Description string
 	Token       string
 	Heartbeat   uint8
+	HTTPTimeout int
 	Username    string
 	Reconnect   bool
 	SSL         bool

@@ -19,7 +19,7 @@ import (
 )
 
 func parseConfig(c *cli.Command) (client.Config, error) {
-	cfg := client.Config{Host: "localhost", Heartbeat: 30, Port: 5912}
+	cfg := client.Config{Host: "localhost", Heartbeat: 30, HTTPTimeout: 30, Port: 5912}
 	var yamlCfg *yaml.File
 	var err error
 
@@ -32,20 +32,21 @@ func parseConfig(c *cli.Command) (client.Config, error) {
 	}
 
 	fields := map[string]any{
-		"group":       &cfg.Group,
-		"id":          &cfg.ID,
-		"host":        &cfg.Host,
-		"port":        &cfg.Port,
-		"description": &cfg.Description,
-		"token":       &cfg.Token,
-		"heartbeat":   &cfg.Heartbeat,
-		"username":    &cfg.Username,
-		"reconnect":   &cfg.Reconnect,
-		"ssl":         &cfg.SSL,
-		"cacert":      &cfg.CACert,
-		"cert":        &cfg.SSLCert,
-		"key":         &cfg.SSLKey,
-		"insecure":    &cfg.Insecure,
+		"group":        &cfg.Group,
+		"id":           &cfg.ID,
+		"host":         &cfg.Host,
+		"port":         &cfg.Port,
+		"description":  &cfg.Description,
+		"token":        &cfg.Token,
+		"heartbeat":    &cfg.Heartbeat,
+		"http-timeout": &cfg.HTTPTimeout,
+		"username":     &cfg.Username,
+		"reconnect":    &cfg.Reconnect,
+		"ssl":          &cfg.SSL,
+		"cacert":       &cfg.CACert,
+		"cert":         &cfg.SSLCert,
+		"key":          &cfg.SSLKey,
+		"insecure":     &cfg.Insecure,
 	}
 
 	for name, opt := range fields {
@@ -79,6 +80,16 @@ func parseConfig(c *cli.Command) (client.Config, error) {
 	if cfg.Heartbeat < 5 {
 		cfg.Heartbeat = 5
 		log.Warn().Msgf("heartbeat interval too low, setting to minimum 5 seconds")
+	}
+
+	if cfg.HTTPTimeout < 5 {
+		cfg.HTTPTimeout = 5
+		log.Warn().Msg("HTTP timeout too short, set to 5s")
+	}
+
+	if cfg.HTTPTimeout > 255 {
+		cfg.HTTPTimeout = 255
+		log.Warn().Msg("HTTP timeout too long, set to 255s")
 	}
 
 	if runtime.GOOS != "windows" && os.Getuid() != 0 {

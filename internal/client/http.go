@@ -20,11 +20,12 @@ import (
 )
 
 type RttyHttpConn struct {
-	active atomic.Int64
-	conn   net.Conn
-	data   chan *bytebufferpool.ByteBuffer
-	ctx    context.Context
-	cancel context.CancelFunc
+	active      atomic.Int64
+	idleTimeout time.Duration
+	conn        net.Conn
+	data        chan *bytebufferpool.ByteBuffer
+	ctx         context.Context
+	cancel      context.CancelFunc
 }
 
 var httpBufPool = sync.Pool{
@@ -38,10 +39,6 @@ var httpBufPool = sync.Pool{
 type HttpBuf struct {
 	buf []byte
 }
-
-const (
-	httpTimeOut = 30 * time.Second
-)
 
 func handleHttpMsg(cli *RttyClient, data []byte) error {
 	var saddr [18]byte
@@ -122,6 +119,7 @@ func (c *RttyHttpConn) run(cli *RttyClient, isHttps bool, saddr [18]byte, daddr 
 	}
 
 	c.conn = conn
+	c.idleTimeout = time.Duration(cli.cfg.HTTPTimeout) * time.Second
 
 	defer func() {
 		cli.httpCons.Delete(saddr)
@@ -143,12 +141,12 @@ func (c *RttyHttpConn) run(cli *RttyClient, isHttps bool, saddr [18]byte, daddr 
 		if n == 0 {
 			return
 		}
-		c.active.Store(time.Now().Add(httpTimeOut).Unix())
+		c.active.Store(time.Now().Add(c.idleTimeout).Unix())
 	}
 }
 
 func (c *RttyHttpConn) Write(data []byte) (int, error) {
-	c.active.Store(time.Now().Add(httpTimeOut).Unix())
+	c.active.Store(time.Now().Add(c.idleTimeout).Unix())
 	return c.conn.Write(data)
 }
 

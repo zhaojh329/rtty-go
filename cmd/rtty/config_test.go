@@ -65,3 +65,61 @@ func TestParseConfig(t *testing.T) {
 		})
 	}
 }
+
+func TestHTTPTimeoutConfig(t *testing.T) {
+	if os.Getuid() > 0 {
+		t.Skip("config parsing currently requires root")
+	}
+
+	tests := []struct {
+		name string
+		yaml string
+		args []string
+		want int
+	}{
+		{name: "default", want: 30},
+		{name: "flag", args: []string{"--http-timeout", "60"}, want: 60},
+		{name: "minimum", args: []string{"--http-timeout", "5"}, want: 5},
+		{name: "maximum", args: []string{"--http-timeout", "255"}, want: 255},
+		{name: "negative", args: []string{"--http-timeout", "-1"}, want: 5},
+		{name: "zero", args: []string{"--http-timeout", "0"}, want: 5},
+		{name: "too large", args: []string{"--http-timeout", "256"}, want: 255},
+		{name: "yaml", yaml: "http-timeout: 45\n", want: 45},
+		{name: "yaml too small", yaml: "http-timeout: 4\n", want: 5},
+		{name: "yaml too large", yaml: "http-timeout: 256\n", want: 255},
+		{name: "flag overrides yaml", yaml: "http-timeout: 45\n", args: []string{"--http-timeout", "90"}, want: 90},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			conf := filepath.Join(t.TempDir(), "rtty.conf")
+			if err := os.WriteFile(conf, []byte("id: device\n"+tt.yaml), 0600); err != nil {
+				t.Fatal(err)
+			}
+
+			cmd := &cli.Command{
+				Flags: []cli.Flag{
+					&cli.StringFlag{Name: "conf"},
+					&cli.IntFlag{Name: "http-timeout"},
+				},
+				Action: func(_ context.Context, c *cli.Command) error {
+					cfg, err := parseConfig(c)
+					if err != nil {
+						return err
+					}
+
+					if cfg.HTTPTimeout != tt.want {
+						t.Errorf("HTTPTimeout = %d, want %d", cfg.HTTPTimeout, tt.want)
+					}
+
+					return nil
+				},
+			}
+
+			args := append([]string{"rtty", "--conf", conf}, tt.args...)
+			if err := cmd.Run(context.Background(), args); err != nil {
+				t.Fatal(err)
+			}
+		})
+	}
+}

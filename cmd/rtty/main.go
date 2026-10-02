@@ -88,6 +88,11 @@ func main() {
 				DefaultText: "30",
 				Usage:       "Set heartbeat interval in seconds(Default is 30s)",
 			},
+			&cli.IntFlag{
+				Name:        "http-timeout",
+				DefaultText: "30",
+				Usage:       "Set HTTP idle timeout in seconds (5-255, default 30)",
+			},
 			&cli.BoolFlag{
 				Name:    "ssl",
 				Aliases: []string{"s"},
